@@ -77,8 +77,12 @@ jobs:
       # A dependency this package does not declare must not be reachable at
       # runtime. The slice has ZERO runtime dependencies on purpose.
       - name: No runtime dependencies crept in
-        run: node -e "
-          const deps = Object.keys(require('./package.json').dependencies ?? {});
-          if (deps.length) { console.error('Unexpected runtime dependencies: ' + deps.join(', ')); process.exit(1); }
-          console.error('Zero runtime dependencies, as declared.');
+        run: |
+          node -e "
+            const deps = Object.keys(require('./package.json').dependencies ?? {});
+            if (deps.length > 0) {
+              console.error('Unexpected runtime dependencies - ' + deps.join(', '));
+              process.exit(1);
+            }
+            console.error('Zero runtime dependencies, as declared.');
           "
