@@ -34,11 +34,28 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+
+      # The typecheck covers tests/ as well as src/, and the probe test imports
+      # the loader — so the corpus has to be here. Excluding tests/ from the
+      # typecheck would have been the easier fix and the wrong one: the probe
+      # test is the thing that decides whether the conformance table measures
+      # anything, so it is the last code that should go unchecked.
+      - name: Checkout prism-parity
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-parity
+          path: .parity
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # After npm ci, always — a --no-save path install is extraneous and any
+      # later npm install prunes it.
+      - run: npm install ./.parity/loaders/ts --no-save
+
       - run: npm run typecheck
 
   package:
