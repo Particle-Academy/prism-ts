@@ -23,6 +23,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The probe tests are part of the suite, not a separate category, so the
+      # corpus has to be here for `npm test` to mean anything.
+      #
+      # The alternative — letting those tests skip themselves when the loader is
+      # absent — is the failure this whole project is about: a mechanism that is
+      # correct and silently not running, reporting green.
+      - name: Checkout prism-parity
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-parity
+          path: .parity
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -31,5 +43,11 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+
+      # AFTER npm ci, always. The loader is installed from a path with
+      # --no-save, which leaves it extraneous — and any later npm install prunes
+      # it. Installed first, it would simply not be here by the time vitest ran.
+      - name: Install the conformance corpus
+        run: npm install ./.parity/loaders/ts --no-save
 
       - run: npm test
