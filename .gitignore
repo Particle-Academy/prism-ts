@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# The conformance corpus. CI clones prism-parity here and installs
+# ./.parity/loaders/ts; it is never a checked-in sibling path.
+.parity/
+coverage/
+*.tsbuildinfo
+.env

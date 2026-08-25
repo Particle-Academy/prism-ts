@@ -1,0 +1,84 @@
+name: Static analysis
+
+# The TypeScript equivalents of the reference's Pint and PHPStan jobs, plus the
+# packaging check that stands in for composer-require-checker: the published
+# tarball must contain what it claims to and nothing it does not.
+
+on:
+  push:
+    branches:
+      - main
+      - "*.x"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  package:
+    name: Package contents
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # The reference runs composer-require-checker so a declared dependency
+      # list cannot drift from the symbols actually used. The npm equivalent of
+      # that failure is a tarball missing its build output, or carrying the test
+      # suite and the conformance runner into a consumer's node_modules.
+      - name: The tarball carries dist and nothing it should not
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const files = JSON.parse(require('fs').readFileSync('pack.json','utf8'))[0].files.map(f => f.path);
+            const has = (p) => files.some(f => f.startsWith(p));
+            const problems = [];
+            if (!has('dist/')) problems.push('dist/ is missing — the package would ship no build output');
+            if (!files.includes('LICENSE')) problems.push('LICENSE is missing');
+            for (const unwanted of ['tests/', 'conformance/', '.parity/', 'src/']) {
+              if (has(unwanted)) problems.push(unwanted + ' should not ship to consumers');
+            }
+            if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
+            console.error('Tarball contents look right (' + files.length + ' files).');
+          "
+
+      # A dependency this package does not declare must not be reachable at
+      # runtime. The slice has ZERO runtime dependencies on purpose.
+      - name: No runtime dependencies crept in
+        run: node -e "
+          const deps = Object.keys(require('./package.json').dependencies ?? {});
+          if (deps.length) { console.error('Unexpected runtime dependencies: ' + deps.join(', ')); process.exit(1); }
+          console.error('Zero runtime dependencies, as declared.');
+          "

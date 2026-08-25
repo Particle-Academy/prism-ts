@@ -1,0 +1,66 @@
+name: Conformance
+
+# Runs the prism-parity corpus against this port, plus the discrimination probes.
+#
+# The probes are the half that makes the corpus a measurement rather than
+# decoration: a faithful control that must pass everything, and eleven mutants
+# that must each fail an EXACT set of case ids. A table every plausible
+# implementation passes proves nothing.
+
+on:
+  push:
+    branches:
+      - main
+      - "*.x"
+  pull_request:
+  # The corpus moves on its own schedule. A port that was conformant on Monday
+  # can be behind on Tuesday without anything in this repository changing.
+  schedule:
+    - cron: "30 7 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: Corpus and probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout prism-parity
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-parity
+          path: .parity
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # THE LOADER GOES LAST, AND THE ORDER IS LOAD-BEARING.
+      #
+      # It is installed from a path with --no-save, which leaves it *extraneous*
+      # — and any later `npm install` prunes it. Installed before `npm ci` above,
+      # it would simply not be here by the time the runner looked, and the
+      # conformance job would report nothing while exiting 0.
+      #
+      # Same family as caret-pinning a 0.x conformance dependency: the mechanism
+      # is correct and silently not running. The runner also exits 3 when the
+      # loader is missing, rather than falling back to anything, so this
+      # ordering mistake fails loudly if it is ever reintroduced.
+      - name: Install the conformance corpus
+        run: npm install ./.parity/loaders/ts --no-save
+
+      - name: Corpus
+        run: node conformance/runner.mjs
+
+      - name: Probes
+        run: npx vitest run tests/probes.test.ts

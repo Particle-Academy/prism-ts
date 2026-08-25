@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    // The conformance runner and its mutation registry are plain ESM so the CLI
+    // can run them against the BUILD with no transpile step. They are type-aware
+    // enough to be imported from the probe test, which is what this allows.
+    "allowJs": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "conformance/**/*.mjs", "vitest.config.ts"]
+}

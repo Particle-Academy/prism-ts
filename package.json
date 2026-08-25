@@ -1,0 +1,45 @@
+{
+  "name": "@particle-academy/prism",
+  "version": "0.1.0",
+  "description": "TypeScript port of Prism — a unified API layer over LLM providers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Particle-Academy/prism-ts"
+  },
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "conformance": "npm run build && node conformance/runner.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.3.0",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
