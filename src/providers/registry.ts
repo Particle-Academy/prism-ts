@@ -1,11 +1,14 @@
 import { PrismError } from '../errors.js';
 import type { Provider } from './provider.js';
+import { Anthropic } from './anthropic/anthropic.js';
+import type { AnthropicConfig } from './anthropic/anthropic.js';
 import { OpenAI } from './openai/openai.js';
 import type { OpenAIConfig } from './openai/openai.js';
 
 export type ProviderFactory = (config: Record<string, unknown>) => Provider;
 
 const providers = new Map<string, ProviderFactory>([
+  ['anthropic', (config) => new Anthropic(config as AnthropicConfig)],
   ['openai', (config) => new OpenAI(config as OpenAIConfig)],
 ]);
 

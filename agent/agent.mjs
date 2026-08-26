@@ -8,6 +8,7 @@
 // Zero runtime dependencies, like the package it lives in.
 
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -18,14 +19,85 @@ import { Prism, registeredProviders } from '../dist/index.js';
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * Load KEY=value pairs from a .env, without a dependency.
+ *
+ * The agent runs as a supervised process, and a supervised process inherits the
+ * supervisor's environment — not the workspace's. So a key sitting in a .env
+ * that every other app here reads was invisible to this one, and the agent
+ * reported that it could not reason while the credential was on disk beside it.
+ *
+ * The repo's own .env wins over the envelope's, and anything ALREADY in the
+ * environment wins over both: an explicit export is a deliberate override and
+ * must not be silently replaced by a file.
+ */
+function loadEnvFile(path) {
+  let contents;
+
+  try {
+    contents = readFileSync(path, 'utf8');
+  } catch {
+    return;
+  }
+
+  for (const line of contents.split('\n')) {
+    const trimmed = line.trim();
+
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+    const equals = trimmed.indexOf('=');
+
+    if (equals < 1) continue;
+
+    const key = trimmed.slice(0, equals).trim();
+
+    if (process.env[key] !== undefined) continue;
+
+    // Surrounding quotes are stripped; nothing else is interpreted. A .env is
+    // not a shell script, and treating it like one is how a value containing a
+    // $ becomes something else.
+    //
+    // Checked by hand rather than with a pattern: this file has been written by
+    // a script more than once, and the backreference in the regex form did not
+    // survive the trip -- it stripped a leading quote with no matching trailing
+    // one, which is worse than not stripping at all.
+    let value = trimmed.slice(equals + 1).trim();
+    const quote = value[0];
+
+    if ((quote === "'" || quote === '"') && value.length > 1 && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile(resolve(ROOT, '.env'));
+loadEnvFile(resolve(ROOT, '..', '..', '.env'));
+
 export const LANGUAGE = 'ts';
 // Provider and model are BOTH configurable, and the provider is checked
 // against what this build actually registers. Without that, pointing
 // PRISM_AGENT_MODEL at a Claude model would send a Claude model name to
 // OpenAI and fail at the API with an error about the model rather than about
 // the provider — the confusing kind, that sends you looking in the wrong place.
-const PROVIDER = process.env.PRISM_AGENT_PROVIDER ?? 'openai';
-const MODEL = process.env.PRISM_AGENT_MODEL ?? 'gpt-4.1-mini';
+const PROVIDER = process.env.PRISM_AGENT_PROVIDER ?? 'anthropic';
+const MODEL = process.env.PRISM_AGENT_MODEL ?? 'claude-sonnet-4-5';
+
+/**
+ * The env var this provider reads its key from.
+ *
+ * Derived rather than hardcoded: the provider became configurable and the key
+ * check did not follow it, so switching to Anthropic left the agent reporting
+ * can_reason from whether an OPENAI key happened to be set. Both ports name
+ * their key <PROVIDER>_API_KEY, so the name follows the provider.
+ */
+function apiKeyVar() {
+  // Concatenated rather than a template literal: this file has been
+  // written by a script more than once, and a ${} inside one does not
+  // survive the trip.
+  return PROVIDER.toUpperCase() + '_API_KEY';
+}
 
 /** Whether this build can actually route to the configured provider. */
 function providerAvailable() {
@@ -145,7 +217,7 @@ export const tools = {
         provider_available: providerAvailable(),
         // Named, never returned. Whether a key EXISTS is a status question;
         // what it is never is.
-        can_reason: Boolean(process.env.OPENAI_API_KEY),
+        can_reason: Boolean(process.env[apiKeyVar()]),
       };
     },
   },
@@ -252,10 +324,10 @@ export const tools = {
         };
       }
 
-      if (!process.env.OPENAI_API_KEY) {
+      if (!process.env[apiKeyVar()]) {
         // Say so rather than calling with an empty bearer token and returning
         // whatever the provider says about it.
-        return { ok: false, reason: 'no OPENAI_API_KEY set for this agent — it cannot reason' };
+        return { ok: false, reason: `no ${apiKeyVar()} set for this agent — it cannot reason` };
       }
 
       const response = await Prism.text()
