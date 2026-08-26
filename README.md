@@ -7,6 +7,11 @@ Real TypeScript: promises, discriminated unions, strict null checking. What it
 is *not* is a transliteration — the idioms are this language's. What crosses the
 wire, and what comes back, is identical.
 
+> **Working on this package?** Read **[`AGENTS.md`](AGENTS.md)** first — the boundary
+> this package has to hold, the gates that must be green, and the traps that have
+> already caught someone.
+> `@link AGENTS.md`
+
 ## Scope
 
 This package is one **vertical slice**, deliberately: the entry point, the
