@@ -35,6 +35,13 @@ function providerAvailable() {
 /** Long enough for a real suite, bounded so a hung child cannot wedge the lane. */
 const RUN_TIMEOUT_MS = Number(process.env.PRISM_AGENT_RUN_TIMEOUT_MS ?? 300_000);
 
+// Where the shared conformance corpus lives. CI checks prism-parity out into
+// .parity/; in the envelope it is already a sibling repo, so that is the
+// default. Either way the corpus is ONE artifact with one digest — a run
+// against a different copy is not comparable, which is why this is a path and
+// not a bundled copy.
+const PARITY_ROOT = process.env.PRISM_PARITY_ROOT ?? '../prism-parity';
+
 async function packageVersion() {
   try {
     return JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')).version ?? null;
@@ -44,28 +51,74 @@ async function packageVersion() {
 }
 
 /**
- * Run an npm script and hand back both streams.
+ * Resolve a script's tool to the JS entry point node can run.
  *
- * Never throws on a non-zero exit. A failing suite is the ANSWER to
- * `run_tests`, not an error in asking — collapsing the two would make a red
- * suite indistinguishable from a broken agent.
+ * The tool named in a script is a BIN name, not always a package name --
+ * `tsc` is shipped by `typescript`. So the tool is tried as a package first,
+ * then every declared dependency is checked for one exposing that bin, which
+ * is what npm resolves through node_modules/.bin.
  */
-async function npmScript(script) {
+async function resolveBin(tool) {
+  const manifest = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8'));
+  const declared = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+
+  for (const pkg of [tool, ...declared]) {
+    try {
+      const own = JSON.parse(await readFile(resolve(ROOT, 'node_modules', pkg, 'package.json'), 'utf8'));
+      const bin = typeof own.bin === 'string' ? (own.name === tool ? own.bin : null) : own.bin?.[tool];
+      if (bin) return resolve(ROOT, 'node_modules', pkg, bin);
+    } catch {
+      // Not installed, or no manifest. Keep looking.
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Run one of package.json's scripts, WITHOUT a shell.
+ *
+ * npm cannot be spawned directly on Windows -- it is a .cmd, and Node refuses
+ * to spawn those without `shell: true` since it hardened against unescaped
+ * argument concatenation. Reaching for a shell to work around that puts a
+ * shell on the path of every future argument, which is the thing being
+ * hardened against.
+ *
+ * So the script is read from package.json and its tool resolved to a JS entry
+ * point node runs directly. It cannot drift from package.json because it IS
+ * package.json.
+ */
+async function script(name) {
+  const manifest = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8'));
+  const line = manifest.scripts?.[name];
+
+  if (typeof line !== 'string') {
+    return { ok: false, stdout: '', stderr: `package.json has no "${name}" script` };
+  }
+
+  // Split on a literal space rather than a whitespace class: this file has
+  // been written by a script more than once, and an eaten backslash turns
+  // that class into the letter it was escaping.
+  const [tool, ...args] = line.split(' ').filter(Boolean);
+  const entry = await resolveBin(tool);
+
+  if (entry === null) {
+    return { ok: false, stdout: '', stderr: `could not resolve an entry point for "${tool}"` };
+  }
+
+  return node([entry, ...args]);
+}
+/** Run node directly, so arguments can be passed without npm swallowing them. */
+async function node(args) {
   try {
-    const { stdout, stderr } = await run('npm', ['run', script], {
+    const { stdout, stderr } = await run(process.execPath, args, {
       cwd: ROOT,
       timeout: RUN_TIMEOUT_MS,
       maxBuffer: 32 * 1024 * 1024,
-      shell: process.platform === 'win32',
     });
     return { ok: true, stdout, stderr };
   } catch (error) {
-    return {
-      ok: false,
-      stdout: error.stdout ?? '',
-      stderr: error.stderr ?? String(error.message ?? error),
-      timedOut: error.killed === true,
-    };
+    return { ok: false, stdout: error.stdout ?? '', stderr: error.stderr ?? String(error.message ?? error) };
   }
 }
 
@@ -134,7 +187,15 @@ export const tools = {
       'Run the cross-language conformance suite for TypeScript and return the report document unchanged.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async handler() {
-      const result = await npmScript('conformance');
+      // Build first: conformance runs against dist/, the artifact a consumer
+      // installs, so a stale build would test yesterday's port.
+      const built = await script('build');
+
+      if (!built.ok) {
+        return { ok: false, report: null, reason: 'the port did not build', output: tail(built.stderr || built.stdout) };
+      }
+
+      const result = await node(['conformance/runner.mjs', '--root', PARITY_ROOT]);
 
       // The runner writes the report document as JSON on stdout. Returned as
       // it comes: the corpus contract is versioned and shared, and reshaping
@@ -158,7 +219,7 @@ export const tools = {
     description: 'Run this port\'s own test suite. Returns pass/fail and the tail of the output.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async handler() {
-      const result = await npmScript('test');
+      const result = await script('test');
       return {
         passed: result.ok,
         timed_out: result.timedOut === true,
