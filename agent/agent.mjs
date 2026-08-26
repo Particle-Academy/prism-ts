@@ -8,7 +8,7 @@
 // Zero runtime dependencies, like the package it lives in.
 
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -77,6 +77,46 @@ export const tools = {
         // Named, never returned. Whether a key EXISTS is a status question;
         // what it is never is.
         can_reason: Boolean(process.env.OPENAI_API_KEY),
+      };
+    },
+  },
+
+  describe_port: {
+    description:
+      'What this port actually implements — providers, and the public API surface. Read from the source, not remembered. Call this before reasoning about whether a feature exists here.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async handler() {
+      // Facts, from disk. The agent was confidently wrong about a provider it
+      // had never had, because nothing let it check — it reasoned from the
+      // question it was asked instead of from the port it lives in.
+      let providers = [];
+      try {
+        const entries = await readdir(resolve(ROOT, 'src/providers'), { withFileTypes: true });
+        providers = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+      } catch {
+        providers = [];
+      }
+
+      let exports = [];
+      try {
+        const index = await readFile(resolve(ROOT, 'src/index.js'), 'utf8').catch(() =>
+          readFile(resolve(ROOT, 'src/index.ts'), 'utf8')
+        );
+        exports = [...index.matchAll(/exports+(?:types+)?{([^}]*)}/g)]
+          .flatMap(m => m[1].split(','))
+          .map(name => name.trim().split(/s+ass+/)[0].trim())
+          .filter(Boolean)
+          .sort();
+      } catch {
+        exports = [];
+      }
+
+      return {
+        language: LANGUAGE,
+        providers_implemented: providers,
+        provider_count: providers.length,
+        public_exports: [...new Set(exports)],
+        note: 'A provider absent from providers_implemented is not implemented here at all — not merely missing a field.',
       };
     },
   },
