@@ -7,8 +7,9 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // The conformance runner is plain ESM running on Node, not bundled source.
-    files: ['conformance/**/*.mjs', 'eslint.config.js'],
+    // The conformance runner and the agent are plain ESM running on Node, not
+    // bundled source — they get Node's globals, which the library never should.
+    files: ['conformance/**/*.mjs', 'agent/**/*.mjs', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
   },
   {

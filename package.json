@@ -31,7 +31,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "conformance": "npm run build && node conformance/runner.mjs"
+    "conformance": "npm run build && node conformance/runner.mjs",
+    "agent": "node agent/server.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
