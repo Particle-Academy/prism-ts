@@ -89,27 +89,19 @@ export const tools = {
       // Facts, from disk. The agent was confidently wrong about a provider it
       // had never had, because nothing let it check — it reasoned from the
       // question it was asked instead of from the port it lives in.
-      let providers = [];
-      try {
-        const entries = await readdir(resolve(ROOT, 'src/providers'), { withFileTypes: true });
-        providers = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
-      } catch {
-        providers = [];
-      }
+      const providers = await readdir(resolve(ROOT, 'src/providers'), { withFileTypes: true })
+        .then(entries => entries.filter(e => e.isDirectory()).map(e => e.name).sort())
+        .catch(() => []);
 
-      let exports = [];
-      try {
-        const index = await readFile(resolve(ROOT, 'src/index.js'), 'utf8').catch(() =>
-          readFile(resolve(ROOT, 'src/index.ts'), 'utf8')
-        );
-        exports = [...index.matchAll(/exports+(?:types+)?{([^}]*)}/g)]
-          .flatMap(m => m[1].split(','))
-          .map(name => name.trim().split(/s+ass+/)[0].trim())
-          .filter(Boolean)
-          .sort();
-      } catch {
-        exports = [];
-      }
+      const exports = await readFile(resolve(ROOT, 'src/index.ts'), 'utf8')
+        .then(index =>
+          [...index.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)]
+            .flatMap(m => m[1].split(','))
+            .map(name => name.trim().split(/\s+as\s+/)[0].trim())
+            .filter(Boolean)
+            .sort()
+        )
+        .catch(() => []);
 
       return {
         language: LANGUAGE,
