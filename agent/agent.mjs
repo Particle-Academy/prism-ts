@@ -13,13 +13,24 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import { Prism } from '../dist/index.js';
+import { Prism, registeredProviders } from '../dist/index.js';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const LANGUAGE = 'ts';
+// Provider and model are BOTH configurable, and the provider is checked
+// against what this build actually registers. Without that, pointing
+// PRISM_AGENT_MODEL at a Claude model would send a Claude model name to
+// OpenAI and fail at the API with an error about the model rather than about
+// the provider — the confusing kind, that sends you looking in the wrong place.
+const PROVIDER = process.env.PRISM_AGENT_PROVIDER ?? 'openai';
 const MODEL = process.env.PRISM_AGENT_MODEL ?? 'gpt-4.1-mini';
+
+/** Whether this build can actually route to the configured provider. */
+function providerAvailable() {
+  return registeredProviders().includes(PROVIDER);
+}
 
 /** Long enough for a real suite, bounded so a hung child cannot wedge the lane. */
 const RUN_TIMEOUT_MS = Number(process.env.PRISM_AGENT_RUN_TIMEOUT_MS ?? 300_000);
@@ -73,7 +84,12 @@ export const tools = {
         language: LANGUAGE,
         agent: 'prism.ts',
         port_version: await packageVersion(),
+        provider: PROVIDER,
         model: MODEL,
+        providers_available: [...registeredProviders()],
+        // A configured provider this build cannot route to is a broken lane
+        // that would otherwise look healthy until the first billable call.
+        provider_available: providerAvailable(),
         // Named, never returned. Whether a key EXISTS is a status question;
         // what it is never is.
         can_reason: Boolean(process.env.OPENAI_API_KEY),
@@ -166,6 +182,15 @@ export const tools = {
       additionalProperties: false,
     },
     async handler({ subject, expected = '', actual = '', context = '' }) {
+      if (!providerAvailable()) {
+        return {
+          ok: false,
+          reason:
+            `this port does not implement "${PROVIDER}" — it registers: ${registeredProviders().join(', ')}. ` +
+            'Set PRISM_AGENT_PROVIDER to one of those, or add the provider to the port.',
+        };
+      }
+
       if (!process.env.OPENAI_API_KEY) {
         // Say so rather than calling with an empty bearer token and returning
         // whatever the provider says about it.
@@ -173,7 +198,7 @@ export const tools = {
       }
 
       const response = await Prism.text()
-        .using('openai', MODEL)
+        .using(PROVIDER, MODEL)
         .withSystemPrompt(
           'You are prism.ts, the TypeScript member of the Prism agent team. Prism is a provider-agnostic LLM ' +
             'library ported across PHP, TypeScript and Python; the ports must behave identically for the same input. ' +
