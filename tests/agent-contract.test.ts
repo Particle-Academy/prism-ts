@@ -48,7 +48,7 @@ describe('agent contract', () => {
     // The agent was once confidently wrong about a provider it had never had,
     // because nothing let it check. An export list has the same failure mode
     // for capabilities: it invites inference from type names.
-    const described = await tools.describe_port.handler({});
+    const described = await tools.describe_port.handler();
 
     expect(described.capabilities_implemented).toEqual([
       'audio',
@@ -68,7 +68,7 @@ describe('agent contract', () => {
     // check: a server started before a tool was added keeps serving the old
     // list, and the only consumer is a Lab screen that reports what it is told.
     // This is the agent answering the question itself.
-    const reported = await tools.status.handler({});
+    const reported = await tools.status.handler();
 
     expect(reported.agent_source_digest).toBeTruthy();
     expect(reported.agent_stale).toBe(false);
@@ -88,7 +88,7 @@ describe('agent contract', () => {
     // counts: `stream` is a terminal on the text builder and the audio pair are
     // terminals on `audio`. An agent comparing eight entry points against the
     // manifest's twelve would report a gap that is not there.
-    const { provider_operations: operations } = await tools.describe_port.handler({});
+    const { provider_operations: operations } = await tools.describe_port.handler();
 
     for (const name of ['stream', 'textToSpeech', 'speechToText']) {
       expect(operations, `${name} missing from provider_operations`).toContain(name);
