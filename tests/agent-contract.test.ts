@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { LOADED_DIGEST, digestOf, tools } from '../agent/agent.mjs';
+import { LOADED_DIGEST, digestOf, loadedDigest, tools } from '../agent/agent.mjs';
 
 /**
  * The tools this port's agent exposes.
@@ -75,13 +75,22 @@ describe('agent contract', () => {
     expect(reported.agent_stale).toBe(false);
   });
 
-  it('computes a digest that actually changes with the file', () => {
-    // Otherwise `agent_stale` is a field that always says "fine". A const
-    // module binding cannot be reassigned from here, so the comparison is
-    // proven through the function it uses.
-    expect(digestOf(resolve(import.meta.dirname, '../agent/agent.mjs'))).toBe(LOADED_DIGEST);
+  it('computes a digest that actually changes with what it hashes', () => {
+    // Otherwise `agent_stale` is a field that always says "fine". A const module
+    // binding cannot be reassigned from here, so the comparison is proven
+    // through the functions it uses.
+    expect(loadedDigest()).toBe(LOADED_DIGEST);
     expect(digestOf(resolve(import.meta.dirname, '../agent/server.mjs'))).not.toBe(LOADED_DIGEST);
     expect(digestOf(resolve(import.meta.dirname, '../agent/nope.mjs'))).toBeNull();
+  });
+
+  it('covers the BUILD, not just the agent module', () => {
+    // The first version hashed agent.mjs alone and reported `agent_stale: false`
+    // while the running process served a provider list from a stale `dist/`.
+    // `status` reads registeredProviders() out of that build, so it is a second
+    // surface that can go stale — and a signal that misses one is worse than
+    // none, because it is believed.
+    expect(loadedDigest()).not.toBe(digestOf(resolve(import.meta.dirname, '../agent/agent.mjs')));
   });
 
   it('separates entry points from provider operations', async () => {

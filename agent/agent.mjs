@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -22,8 +22,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const AGENT_SOURCE = resolve(ROOT, 'agent/agent.mjs');
 
+const BUILD_DIR = resolve(ROOT, 'dist');
+
 /**
- * A digest of this file, taken when the process STARTED.
+ * A digest of everything this process LOADED, taken when it started.
  *
  * The running server is the one thing a test over the source cannot check. A
  * server started before a tool was added keeps serving the old list, the only
@@ -31,13 +33,17 @@ const AGENT_SOURCE = resolve(ROOT, 'agent/agent.mjs');
  * invisible from both ends — which is precisely what happened, twice, on both
  * ports. See the port gaps register, G-12.
  *
- * Comparing this against the file on disk lets the agent answer "am I running
- * the code that is checked out?" itself, rather than leaving someone to notice.
- * It covers the agent module and nothing else, which is the whole surface that
- * can go stale: every other tool reads the port from disk or spawns a child
- * process at call time, so they are current by construction.
+ * TWO SOURCES, not one. The first version of this hashed only `agent.mjs` and
+ * claimed here that nothing else could go stale. That was WRONG, and it was
+ * caught within the hour: `status` reports `registeredProviders()` out of the
+ * imported `dist/`, so a rebuild that adds a provider left this process
+ * reporting the old list while `agent_stale` said false. A staleness signal
+ * that misses a stale surface is worse than none, because it is believed.
+ *
+ * `dist/` is fingerprinted by path, size and mtime rather than read, so this
+ * stays cheap enough for a call documented as safe to poll.
  */
-export const LOADED_DIGEST = digestOf(AGENT_SOURCE);
+export const LOADED_DIGEST = loadedDigest();
 
 export function digestOf(path) {
   try {
@@ -45,6 +51,55 @@ export function digestOf(path) {
   } catch {
     return null;
   }
+}
+
+/** The agent module's bytes, plus a stat fingerprint of the build it imports. */
+export function loadedDigest() {
+  const hash = createHash('sha256');
+
+  try {
+    hash.update(readFileSync(AGENT_SOURCE));
+  } catch {
+    return null;
+  }
+
+  for (const entry of buildFingerprint()) {
+    hash.update(entry);
+  }
+
+  return hash.digest('hex').slice(0, 12);
+}
+
+function buildFingerprint(dir = BUILD_DIR) {
+  const entries = [];
+
+  let listing;
+
+  try {
+    listing = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // No build yet. Reported as a digest over the agent alone rather than as an
+    // error: a source checkout with no dist is a real state.
+    return entries;
+  }
+
+  for (const entry of [...listing].sort((a, b) => a.name.localeCompare(b.name))) {
+    const path = resolve(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      entries.push(...buildFingerprint(path));
+      continue;
+    }
+
+    if (!entry.name.endsWith('.js')) {
+      continue;
+    }
+
+    const stats = statSync(path);
+    entries.push(`${path}:${stats.size}:${stats.mtimeMs}`);
+  }
+
+  return entries;
 }
 
 /**
@@ -250,7 +305,7 @@ export const tools = {
         // TRUE means this process is running code that is no longer on disk and
         // its tool list may be wrong. Restart it before believing anything else
         // here.
-        agent_stale: LOADED_DIGEST !== null && LOADED_DIGEST !== digestOf(AGENT_SOURCE),
+        agent_stale: LOADED_DIGEST !== null && LOADED_DIGEST !== loadedDigest(),
       };
     },
   },
