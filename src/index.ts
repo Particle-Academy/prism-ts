@@ -74,3 +74,18 @@ export type { HttpStreamResponse, HttpStreamTransport } from './http/transport.j
 export { ObjectSchema, ArraySchema, EnumSchema } from './schema/index.js';
 export type { ObjectSchemaOptions, ArraySchemaOptions, EnumSchemaOptions } from './schema/index.js';
 export { structuredFromTextResponse } from './structured/from-text.js';
+
+export { sseData } from './streaming/sse.js';
+export {
+  ErrorEvent,
+  StreamEndEvent,
+  StreamEvent,
+  StreamEventType,
+  StreamStartEvent,
+  TextCompleteEvent,
+  TextDeltaEvent,
+  TextStartEvent,
+  ToolCallEvent,
+  eventId,
+} from './streaming/events.js';
+export { mapStreamEvent } from './providers/openai/stream-events.js';

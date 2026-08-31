@@ -1,4 +1,4 @@
-import { canonicalJson } from '../../json.js';
+import { canonicalJson, isJsonObject } from '../../json.js';
 import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
 import type { StructuredRequest } from '../../structured/request.js';
@@ -6,7 +6,11 @@ import type { StructuredResponse } from '../../structured/response.js';
 import { structuredFromTextResponse } from '../../structured/from-text.js';
 import { buildStructuredBody } from './build-structured-body.js';
 import type { HttpTransport } from '../../http/transport.js';
-import { fetchTransport } from '../../http/transport.js';
+import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
+import type { HttpStreamTransport } from '../../http/transport.js';
+import type { StreamEvent } from '../../streaming/events.js';
+import { sseData } from '../../streaming/sse.js';
+import { mapStreamEvent } from './stream-events.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
 import { Provider } from '../provider.js';
@@ -22,6 +26,7 @@ export interface OpenAIConfig {
   /** Only `'responses'` is implemented; the chat-completions format is not ported. */
   apiFormat?: string;
   transport?: HttpTransport;
+  streamTransport?: HttpStreamTransport;
 }
 
 const DEFAULT_URL = 'https://api.openai.com/v1';
@@ -47,6 +52,8 @@ export class OpenAI extends Provider {
 
   readonly #transport: HttpTransport;
 
+  readonly #streamTransport: HttpStreamTransport;
+
   constructor(config: OpenAIConfig = {}) {
     super();
 
@@ -56,6 +63,7 @@ export class OpenAI extends Provider {
     this.project = config.project ?? readEnv('OPENAI_PROJECT') ?? null;
     this.apiFormat = config.apiFormat ?? readEnv('OPENAI_API_FORMAT') ?? 'responses';
     this.#transport = config.transport ?? fetchTransport;
+    this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
@@ -67,6 +75,40 @@ export class OpenAI extends Provider {
     // reading, so finish reasons, token-limit failures, usage and rate limits
     // behave identically on both paths by construction.
     return structuredFromTextResponse(await this.#send('structured', request, buildStructuredBody(request)));
+  }
+
+  /**
+   * The same generation, delivered as it arrives.
+   *
+   * `stream: true` is set here rather than in `buildRequestBody`, so the body a
+   * streamed call sends is provably the non-streamed body plus one key — the
+   * two cannot drift apart into different requests that happen to look alike.
+   */
+  override async *stream(request: TextRequest): AsyncGenerator<StreamEvent> {
+    const response = await this.#streamTransport({
+      url: `${this.url.replace(/\/+$/, '')}/responses`,
+      method: 'POST',
+      headers: { ...this.headers(), Accept: 'text/event-stream' },
+      body: canonicalJson({ ...buildRequestBody(request), stream: true }),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      // Read the body before failing: an error response is not an event stream,
+      // and the message inside it is the only useful thing about this call.
+      throw PrismError.providerResponseError(
+        describeHttpFailure(this.providerName, response.status, await collectJson(response.chunks)),
+        { httpStatus: response.status },
+      );
+    }
+
+    for await (const payload of sseData(response.chunks)) {
+      const event = mapStreamEvent(parsePayload(payload));
+
+      if (event !== null) {
+        yield event;
+      }
+    }
   }
 
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
@@ -128,4 +170,30 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
       : 'Unknown error';
 
   return `${provider} error [${status}]: ${detail}`;
+}
+
+/** An SSE payload that is not JSON is skipped rather than fatal — see mapStreamEvent. */
+function parsePayload(payload: string): JsonObject {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+
+    return isJsonObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Drain a non-stream body so an HTTP failure can still report what it said. */
+async function collectJson(chunks: AsyncIterable<string>): Promise<unknown> {
+  let text = '';
+
+  for await (const chunk of chunks) {
+    text += chunk;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

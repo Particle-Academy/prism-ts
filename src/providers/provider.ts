@@ -1,6 +1,7 @@
 import { PrismError } from '../errors.js';
 import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
+import type { StreamEvent } from '../streaming/events.js';
 import type { StructuredRequest } from '../structured/request.js';
 import type { StructuredResponse } from '../structured/response.js';
 
@@ -23,7 +24,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('text', this.providerName);
   }
 
-  stream(_request: TextRequest): never {
+  stream(_request: TextRequest): AsyncGenerator<StreamEvent> {
     throw PrismError.unsupportedProviderAction('stream', this.providerName);
   }
 

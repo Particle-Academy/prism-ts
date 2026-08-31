@@ -11,6 +11,7 @@ import type { Text } from '../value-objects/media/text.js';
 import type { ProviderTool } from '../value-objects/provider-tool.js';
 import { TextRequest, type TextRequestOptions } from './request.js';
 import type { TextResponse } from './response.js';
+import type { StreamEvent } from '../streaming/events.js';
 
 export type TextResponseCallback = (
   pending: TextPendingRequest,
@@ -230,6 +231,18 @@ export class TextPendingRequest {
       providerTools: this.#providerTools,
       reasoningEnabled: this.#reasoningEnabled,
     };
+  }
+
+  /**
+   * The same generation, delivered as it arrives.
+   *
+   * Yields the provider's events and accumulates NOTHING. A caller that wants
+   * the finished text collects the deltas it is already being handed; a builder
+   * that quietly buffered them would double the memory of every stream to serve
+   * the callers who do not need it.
+   */
+  asStream(): AsyncGenerator<StreamEvent> {
+    return this.provider().stream(this.toRequest());
   }
 
   async asText(callback?: TextResponseCallback): Promise<TextResponse> {
