@@ -69,6 +69,8 @@ export type { StructuredRequestOptions } from './structured/request.js';
 export { StructuredResponse } from './structured/response.js';
 export type { StructuredResponseOptions } from './structured/response.js';
 export { extractStructured } from './structured/extract.js';
+export { fetchStreamTransport } from './http/transport.js';
+export type { HttpStreamResponse, HttpStreamTransport } from './http/transport.js';
 export { ObjectSchema, ArraySchema, EnumSchema } from './schema/index.js';
 export type { ObjectSchemaOptions, ArraySchemaOptions, EnumSchemaOptions } from './schema/index.js';
 export { structuredFromTextResponse } from './structured/from-text.js';
