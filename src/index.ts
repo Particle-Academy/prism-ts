@@ -120,3 +120,16 @@ export { Image } from './value-objects/media/image.js';
 export { Audio } from './value-objects/media/audio.js';
 export { Document } from './value-objects/media/document.js';
 export { Video } from './value-objects/media/video.js';
+
+export { AudioPendingRequest } from './audio/pending-request.js';
+export { SpeechToTextRequest, TextToSpeechRequest } from './audio/request.js';
+export { AudioResponse, AudioTextResponse } from './audio/response.js';
+export { GeneratedAudio } from './value-objects/generated-audio.js';
+export { fetchBinaryTransport } from './http/transport.js';
+export type { HttpBinaryResponse, HttpBinaryTransport, MultipartBody, MultipartFile } from './http/transport.js';
+export {
+  buildSpeechBody,
+  buildTranscriptionForm,
+  parseSpeechResponse,
+  parseTranscriptionResponse,
+} from './providers/openai/audio.js';

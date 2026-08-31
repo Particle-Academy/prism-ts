@@ -3,6 +3,8 @@ import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
 import type { EmbeddingsRequest } from '../embeddings/request.js';
 import type { ImagesRequest } from '../images/request.js';
+import type { SpeechToTextRequest, TextToSpeechRequest } from '../audio/request.js';
+import type { AudioResponse, AudioTextResponse } from '../audio/response.js';
 import type { ModerationRequest } from '../moderation/request.js';
 import type { ModerationResponse } from '../moderation/response.js';
 import type { ImagesResponse } from '../images/response.js';
@@ -50,11 +52,11 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('moderation', this.providerName);
   }
 
-  textToSpeech(_request: unknown): never {
+  textToSpeech(_request: TextToSpeechRequest): Promise<AudioResponse> {
     throw PrismError.unsupportedProviderAction('textToSpeech', this.providerName);
   }
 
-  speechToText(_request: unknown): never {
+  speechToText(_request: SpeechToTextRequest): Promise<AudioTextResponse> {
     throw PrismError.unsupportedProviderAction('speechToText', this.providerName);
   }
 

@@ -138,3 +138,104 @@ async function* readChunks(response: Response): AsyncGenerator<string> {
     reader.releaseLock();
   }
 }
+
+/**
+ * A file being uploaded as part of a multipart request.
+ *
+ * `bytes` rather than a path: the transport should not be reading the disk. By
+ * the time a request reaches it, whatever named the file has already decided
+ * whether it exists — which keeps a "file not found" attributable to the caller
+ * that named it rather than surfacing from inside the network layer.
+ */
+export interface MultipartFile {
+  field: string;
+  filename: string;
+  bytes: Uint8Array;
+  contentType?: string;
+}
+
+/**
+ * A request whose body is a multipart form rather than JSON.
+ *
+ * Separate from the JSON `body` rather than a union on it, so a provider cannot
+ * accidentally send both and a transport cannot silently prefer one. Exactly one
+ * of `body` and `multipart` is meaningful for any request.
+ */
+export interface MultipartBody {
+  fields: Readonly<Record<string, string>>;
+  files: readonly MultipartFile[];
+}
+
+export interface HttpBinaryResponse {
+  status: number;
+  /** Header names lowercased. */
+  headers: Readonly<Record<string, string>>;
+  bytes: Uint8Array;
+}
+
+export type HttpBinaryTransport = (
+  request: HttpRequest & { multipart?: MultipartBody },
+) => Promise<HttpBinaryResponse>;
+
+/**
+ * The default binary transport.
+ *
+ * Reads the whole body into memory, which is right for the payloads this serves
+ * — a spoken sentence is measured in kilobytes — and would be wrong for a large
+ * file. When something needs to stream audio out, that is a different transport
+ * rather than a flag on this one.
+ */
+export const fetchBinaryTransport: HttpBinaryTransport = async (request): Promise<HttpBinaryResponse> => {
+  const headers = { ...request.headers };
+  let body: string | FormData = request.body;
+
+  if (request.multipart !== undefined) {
+    const form = new FormData();
+
+    for (const [name, value] of Object.entries(request.multipart.fields)) {
+      form.append(name, value);
+    }
+
+    for (const file of request.multipart.files) {
+      form.append(
+        file.field,
+        // Copied into a fresh ArrayBuffer. A Uint8Array can be a VIEW over a
+        // larger buffer — one slice of a pooled Node Buffer, say — and Blob
+        // takes the whole backing store, so handing the view straight over can
+        // upload bytes that were never part of this file.
+        new Blob([new Uint8Array(file.bytes).buffer], {
+          type: file.contentType ?? 'application/octet-stream',
+        }),
+        file.filename,
+      );
+    }
+
+    body = form;
+
+    // DELETED, not overwritten. `fetch` sets the multipart boundary itself, and
+    // a Content-Type left behind from the JSON path arrives without one — which
+    // a server reads as a malformed body rather than as a missing boundary, so
+    // the error names the wrong thing.
+    delete headers['Content-Type'];
+    delete headers['content-type'];
+  }
+
+  const response = await fetch(request.url, {
+    method: request.method,
+    headers,
+    body,
+    ...request.clientOptions,
+  });
+
+  const responseHeaders: Record<string, string> = {};
+
+  response.headers.forEach((value, name) => {
+    responseHeaders[name.toLowerCase()] = value;
+  });
+
+  return {
+    status: response.status,
+    headers: responseHeaders,
+    bytes: new Uint8Array(await response.arrayBuffer()),
+  };
+};

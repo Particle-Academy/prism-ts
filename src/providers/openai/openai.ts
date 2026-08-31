@@ -14,9 +14,18 @@ import { buildImagesBody, parseImagesResponse } from './images.js';
 import type { ModerationRequest } from '../../moderation/request.js';
 import type { ModerationResponse } from '../../moderation/response.js';
 import { buildModerationBody, parseModerationResponse } from './moderation.js';
+import type { SpeechToTextRequest, TextToSpeechRequest } from '../../audio/request.js';
+import type { AudioResponse, AudioTextResponse } from '../../audio/response.js';
+import {
+  buildSpeechBody,
+  buildTranscriptionForm,
+  parseSpeechResponse,
+  parseTranscriptionResponse,
+} from './audio.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
-import type { HttpStreamTransport } from '../../http/transport.js';
+import type { HttpBinaryTransport, HttpStreamTransport } from '../../http/transport.js';
+import { fetchBinaryTransport } from '../../http/transport.js';
 import type { StreamEvent } from '../../streaming/events.js';
 import { sseData } from '../../streaming/sse.js';
 import { mapStreamEvent } from './stream-events.js';
@@ -36,6 +45,7 @@ export interface OpenAIConfig {
   apiFormat?: string;
   transport?: HttpTransport;
   streamTransport?: HttpStreamTransport;
+  binaryTransport?: HttpBinaryTransport;
 }
 
 const DEFAULT_URL = 'https://api.openai.com/v1';
@@ -63,6 +73,8 @@ export class OpenAI extends Provider {
 
   readonly #streamTransport: HttpStreamTransport;
 
+  readonly #binaryTransport: HttpBinaryTransport;
+
   constructor(config: OpenAIConfig = {}) {
     super();
 
@@ -73,6 +85,7 @@ export class OpenAI extends Provider {
     this.apiFormat = config.apiFormat ?? readEnv('OPENAI_API_FORMAT') ?? 'responses';
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
+    this.#binaryTransport = config.binaryTransport ?? fetchBinaryTransport;
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
@@ -185,6 +198,48 @@ export class OpenAI extends Provider {
     return parseModerationResponse(response.body, request.model());
   }
 
+  override async textToSpeech(request: TextToSpeechRequest): Promise<AudioResponse> {
+    const response = await this.#binaryTransport({
+      url: `${this.url.replace(/\/+$/, '')}/audio/speech`,
+      method: 'POST',
+      headers: this.headers(),
+      body: canonicalJson(buildSpeechBody(request)),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      // An error is JSON even on an endpoint that answers with audio, so the
+      // bytes are decoded as text to get the message out.
+      throw PrismError.providerResponseError(
+        describeHttpFailure(this.providerName, response.status, decodeJson(response.bytes)),
+        { httpStatus: response.status },
+      );
+    }
+
+    return parseSpeechResponse(response.bytes, response.headers['content-type'] ?? null, request);
+  }
+
+  override async speechToText(request: SpeechToTextRequest): Promise<AudioTextResponse> {
+    const response = await this.#binaryTransport({
+      url: `${this.url.replace(/\/+$/, '')}/audio/transcriptions`,
+      method: 'POST',
+      headers: this.headers(),
+      body: '',
+      multipart: buildTranscriptionForm(request),
+      clientOptions: request.clientOptions(),
+    });
+
+    const decoded = decodeJson(response.bytes);
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, decoded), {
+        httpStatus: response.status,
+      });
+    }
+
+    return parseTranscriptionResponse(decoded);
+  }
+
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
     if (this.apiFormat !== 'responses') {
       throw PrismError.unsupportedProviderAction(`${action} in the ${this.apiFormat} api format`, this.providerName);
@@ -267,6 +322,16 @@ async function collectJson(chunks: AsyncIterable<string>): Promise<unknown> {
 
   try {
     return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+
+/** An audio endpoint answers with bytes; its ERRORS are still JSON. */
+function decodeJson(bytes: Uint8Array): unknown {
+  try {
+    return JSON.parse(Buffer.from(bytes).toString('utf8'));
   } catch {
     return null;
   }

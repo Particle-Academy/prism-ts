@@ -40,7 +40,11 @@ export type PrismErrorCode =
   /** A media file could not be read from disk. */
   | 'unreadable_media_file'
   /** A media payload could not be fetched from its url. */
-  | 'unfetchable_media';
+  | 'unfetchable_media'
+  /** An audio terminal was called with the input for the other direction. */
+  | 'wrong_audio_input'
+  /** A speech-to-text input carries no bytes to send. */
+  | 'no_audio_content';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -107,6 +111,24 @@ export class PrismError extends Error {
    * false, and a caller gating on it lets everything through. A safety check
    * that fails OPEN because it was called wrong is the worst shape here.
    */
+  static wrongAudioInput(wanted: string, got: string): PrismError {
+    return new PrismError('wrong_audio_input', `This call needs ${wanted}, and withInput() was given ${got}.`);
+  }
+
+  /**
+   * A transcription input with nothing to upload.
+   *
+   * Reached when the `Audio` holds only a url, which this port does not fetch
+   * implicitly — see `Media`. Says so rather than posting an empty file, which
+   * a provider answers with a transcript of silence.
+   */
+  static noAudioContent(): PrismError {
+    return new PrismError(
+      'no_audio_content',
+      'The audio input has no content to send. Build it from a file, bytes or base64, or call fetch() on a url payload first.',
+    );
+  }
+
   static unreadableMediaFile(path: string, cause?: unknown): PrismError {
     return new PrismError('unreadable_media_file', `Could not read the media file [${path}].`, { cause });
   }
