@@ -133,3 +133,20 @@ export {
   parseSpeechResponse,
   parseTranscriptionResponse,
 } from './providers/openai/audio.js';
+
+export { FilesPendingRequest } from './files/pending-request.js';
+export { DeleteFileResult, FileData, FileListResult } from './files/file-data.js';
+export {
+  DeleteFileRequest,
+  DownloadFileRequest,
+  GetFileMetadataRequest,
+  ListFilesRequest,
+  UploadFileRequest,
+} from './files/request.js';
+export {
+  buildListQuery,
+  buildUploadForm,
+  parseDeleteResponse,
+  parseFileData,
+  parseFileListResponse,
+} from './providers/openai/files.js';

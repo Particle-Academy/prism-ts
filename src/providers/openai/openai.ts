@@ -22,9 +22,24 @@ import {
   parseSpeechResponse,
   parseTranscriptionResponse,
 } from './audio.js';
+import type {
+  DeleteFileRequest,
+  DownloadFileRequest,
+  GetFileMetadataRequest,
+  ListFilesRequest,
+  UploadFileRequest,
+} from '../../files/request.js';
+import type { DeleteFileResult, FileData, FileListResult } from '../../files/file-data.js';
+import {
+  buildListQuery,
+  buildUploadForm,
+  parseDeleteResponse,
+  parseFileData,
+  parseFileListResponse,
+} from './files.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
-import type { HttpBinaryTransport, HttpStreamTransport } from '../../http/transport.js';
+import type { HttpBinaryTransport, HttpStreamTransport, MultipartBody } from '../../http/transport.js';
 import { fetchBinaryTransport } from '../../http/transport.js';
 import type { StreamEvent } from '../../streaming/events.js';
 import { sseData } from '../../streaming/sse.js';
@@ -238,6 +253,100 @@ export class OpenAI extends Provider {
     }
 
     return parseTranscriptionResponse(decoded);
+  }
+
+  override async uploadFile(request: UploadFileRequest): Promise<FileData> {
+    return parseFileData(
+      await this.#file('POST', 'files', request.clientOptions(), buildUploadForm(request)),
+    );
+  }
+
+  override async listFiles(request: ListFilesRequest): Promise<FileListResult> {
+    const query = new URLSearchParams(buildListQuery(request)).toString();
+    const path = query === '' ? 'files' : `files?${query}`;
+
+    return parseFileListResponse(await this.#file('GET', path, request.clientOptions()));
+  }
+
+  override async getFileMetadata(request: GetFileMetadataRequest): Promise<FileData> {
+    return parseFileData(
+      await this.#file('GET', `files/${encodeURIComponent(request.fileId)}`, request.clientOptions()),
+    );
+  }
+
+  override async deleteFile(request: DeleteFileRequest): Promise<DeleteFileResult> {
+    return parseDeleteResponse(
+      await this.#file('DELETE', `files/${encodeURIComponent(request.fileId)}`, request.clientOptions()),
+    );
+  }
+
+  /**
+   * The file's bytes, returned WITHOUT being decoded.
+   *
+   * The only file operation that does not go through `#file`, because that
+   * helper's job is to decode JSON and this one must not: a downloaded PDF run
+   * through a JSON parse comes back as null, and the failure would look like an
+   * empty file rather than a decode that should never have happened.
+   */
+  override async downloadFile(request: DownloadFileRequest): Promise<Uint8Array> {
+    const response = await this.#binaryTransport({
+      url: `${this.url.replace(/\/+$/, '')}/files/${encodeURIComponent(request.fileId)}/content`,
+      method: 'GET',
+      headers: this.headers(),
+      body: '',
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(
+        describeHttpFailure(this.providerName, response.status, decodeJson(response.bytes)),
+        { httpStatus: response.status },
+      );
+    }
+
+    return response.bytes;
+  }
+
+  /**
+   * One round trip for the four file operations that answer with JSON.
+   *
+   * They go through the BINARY transport rather than the JSON one, even though
+   * their replies are JSON, because upload sends multipart and only that
+   * transport carries a form. Routing the four together keeps their headers,
+   * error mapping and url building decided once — the alternative was upload on
+   * one transport and its three siblings on another, which is how two paths
+   * that should agree stop agreeing.
+   */
+  async #file(
+    method: string,
+    path: string,
+    clientOptions: Readonly<Record<string, unknown>>,
+    multipart?: MultipartBody,
+  ): Promise<unknown> {
+    const response = await this.#binaryTransport({
+      url: `${this.url.replace(/\/+$/, '')}/${path}`,
+      method,
+      headers: this.headers(),
+      body: '',
+      ...(multipart === undefined ? {} : { multipart }),
+      clientOptions,
+    });
+
+    const decoded = decodeJson(response.bytes);
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, decoded), {
+        httpStatus: response.status,
+      });
+    }
+
+    // OpenAI reports some file failures with a 200 and an `error` object, so
+    // the status alone is not the verdict.
+    if (isJsonObject(decoded) && isJsonObject(decoded.error)) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, decoded));
+    }
+
+    return decoded;
   }
 
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {

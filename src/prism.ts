@@ -1,6 +1,7 @@
 import { TextPendingRequest } from './text/pending-request.js';
 import { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
 import { AudioPendingRequest } from './audio/pending-request.js';
+import { FilesPendingRequest } from './files/pending-request.js';
 import { ImagesPendingRequest } from './images/pending-request.js';
 import { ModerationPendingRequest } from './moderation/pending-request.js';
 import { StructuredPendingRequest } from './structured/pending-request.js';
@@ -65,5 +66,13 @@ export class Prism {
 
   static audio(): AudioPendingRequest {
     return new Prism().audio();
+  }
+
+  files(): FilesPendingRequest {
+    return new FilesPendingRequest();
+  }
+
+  static files(): FilesPendingRequest {
+    return new Prism().files();
   }
 }

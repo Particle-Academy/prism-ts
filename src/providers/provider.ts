@@ -6,6 +6,14 @@ import type { ImagesRequest } from '../images/request.js';
 import type { SpeechToTextRequest, TextToSpeechRequest } from '../audio/request.js';
 import type { AudioResponse, AudioTextResponse } from '../audio/response.js';
 import type { ModerationRequest } from '../moderation/request.js';
+import type {
+  DeleteFileRequest,
+  DownloadFileRequest,
+  GetFileMetadataRequest,
+  ListFilesRequest,
+  UploadFileRequest,
+} from '../files/request.js';
+import type { DeleteFileResult, FileData, FileListResult } from '../files/file-data.js';
 import type { ModerationResponse } from '../moderation/response.js';
 import type { ImagesResponse } from '../images/response.js';
 import type { EmbeddingsResponse } from '../embeddings/response.js';
@@ -68,7 +76,24 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('batch', this.providerName);
   }
 
-  uploadFile(_request: unknown): never {
+  uploadFile(_request: UploadFileRequest): Promise<FileData> {
     throw PrismError.unsupportedProviderAction('uploadFile', this.providerName);
+  }
+
+  listFiles(_request: ListFilesRequest): Promise<FileListResult> {
+    throw PrismError.unsupportedProviderAction('listFiles', this.providerName);
+  }
+
+  getFileMetadata(_request: GetFileMetadataRequest): Promise<FileData> {
+    throw PrismError.unsupportedProviderAction('getFileMetadata', this.providerName);
+  }
+
+  deleteFile(_request: DeleteFileRequest): Promise<DeleteFileResult> {
+    throw PrismError.unsupportedProviderAction('deleteFile', this.providerName);
+  }
+
+  /** Bytes, not a string. See `FilesPendingRequest.download`. */
+  downloadFile(_request: DownloadFileRequest): Promise<Uint8Array> {
+    throw PrismError.unsupportedProviderAction('downloadFile', this.providerName);
   }
 }
