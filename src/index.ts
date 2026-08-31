@@ -89,3 +89,12 @@ export {
   eventId,
 } from './streaming/events.js';
 export { mapStreamEvent } from './providers/openai/stream-events.js';
+
+export { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
+export { EmbeddingsRequest } from './embeddings/request.js';
+export type { EmbeddingsRequestOptions } from './embeddings/request.js';
+export { EmbeddingsResponse } from './embeddings/response.js';
+export type { EmbeddingsResponseOptions } from './embeddings/response.js';
+export { Embedding } from './value-objects/embedding.js';
+export { EmbeddingsUsage } from './value-objects/embeddings-usage.js';
+export { buildEmbeddingsBody, parseEmbeddingsResponse } from './providers/openai/embeddings.js';

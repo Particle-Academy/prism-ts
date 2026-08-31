@@ -28,7 +28,11 @@ export type PrismErrorCode =
   /** A structured request reached `toRequest()` with no schema set. */
   | 'missing_schema'
   /** The model cannot produce structured output at all, by name. */
-  | 'unsupported_structured_model';
+  | 'unsupported_structured_model'
+  /** An embeddings request reached `toRequest()` with no input. */
+  | 'no_embedding_input'
+  /** `fromFile()` could not read the path it was given. */
+  | 'unreadable_input_file';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -72,6 +76,23 @@ export class PrismError extends Error {
 
   static unsupportedStructuredModel(model: string): PrismError {
     return new PrismError('unsupported_structured_model', `Structured output is not supported for ${model}`);
+  }
+
+  /**
+   * An embeddings request with no input.
+   *
+   * Refused rather than sent. The call is billable, comes back with an empty
+   * list, and reads to the caller as a provider that answered nothing.
+   */
+  static noEmbeddingInput(): PrismError {
+    return new PrismError(
+      'no_embedding_input',
+      'An embeddings request needs at least one input. Call fromInput(), fromArray() or fromFile().',
+    );
+  }
+
+  static unreadableInputFile(path: string, cause?: unknown): PrismError {
+    return new PrismError('unreadable_input_file', `Could not read the embeddings input file [${path}].`, { cause });
   }
 
   static maxTokensExceeded(status: string, type: string): PrismError {

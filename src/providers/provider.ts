@@ -1,6 +1,8 @@
 import { PrismError } from '../errors.js';
 import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
+import type { EmbeddingsRequest } from '../embeddings/request.js';
+import type { EmbeddingsResponse } from '../embeddings/response.js';
 import type { StreamEvent } from '../streaming/events.js';
 import type { StructuredRequest } from '../structured/request.js';
 import type { StructuredResponse } from '../structured/response.js';
@@ -32,7 +34,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('structured', this.providerName);
   }
 
-  embeddings(_request: unknown): never {
+  embeddings(_request: EmbeddingsRequest): Promise<EmbeddingsResponse> {
     throw PrismError.unsupportedProviderAction('embeddings', this.providerName);
   }
 

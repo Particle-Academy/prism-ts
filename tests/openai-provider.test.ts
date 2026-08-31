@@ -154,7 +154,7 @@ describe('OpenAI provider', () => {
     // by StructuredTest instead, which is the point of listing them by name
     // rather than reflecting over the class: implementing one has to be a
     // deliberate edit here.
-    for (const capability of ['embeddings', 'images', 'moderation', 'fim'] as const) {
+    for (const capability of ['images', 'moderation', 'fim'] as const) {
       try {
         provider[capability](undefined);
         expect.unreachable('should have thrown');

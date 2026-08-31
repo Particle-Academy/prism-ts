@@ -5,6 +5,9 @@ import type { StructuredRequest } from '../../structured/request.js';
 import type { StructuredResponse } from '../../structured/response.js';
 import { structuredFromTextResponse } from '../../structured/from-text.js';
 import { buildStructuredBody } from './build-structured-body.js';
+import type { EmbeddingsRequest } from '../../embeddings/request.js';
+import type { EmbeddingsResponse } from '../../embeddings/response.js';
+import { buildEmbeddingsBody, parseEmbeddingsResponse } from './embeddings.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
 import type { HttpStreamTransport } from '../../http/transport.js';
@@ -109,6 +112,33 @@ export class OpenAI extends Provider {
         yield event;
       }
     }
+  }
+
+  /**
+   * Vectors for one or more inputs.
+   *
+   * A different endpoint from the rest of this provider, so it does not go
+   * through `#send`: that helper posts to `/responses` and parses a text reply,
+   * and bending it to also mean `/embeddings` would make both harder to read
+   * than two short methods.
+   */
+  override async embeddings(request: EmbeddingsRequest): Promise<EmbeddingsResponse> {
+    const response = await this.#transport({
+      url: `${this.url.replace(/\/+$/, '')}/embeddings`,
+      method: 'POST',
+      headers: this.headers(),
+      body: canonicalJson(buildEmbeddingsBody(request)),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, response.body), {
+        httpStatus: response.status,
+        responseBody: response.rawBody,
+      });
+    }
+
+    return parseEmbeddingsResponse(response.body);
   }
 
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
