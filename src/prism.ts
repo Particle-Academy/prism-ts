@@ -1,4 +1,5 @@
 import { TextPendingRequest } from './text/pending-request.js';
+import { StructuredPendingRequest } from './structured/pending-request.js';
 
 /**
  * The entry point.
@@ -18,7 +19,15 @@ export class Prism {
     return new TextPendingRequest();
   }
 
+  structured(): StructuredPendingRequest {
+    return new StructuredPendingRequest();
+  }
+
   static text(): TextPendingRequest {
     return new Prism().text();
+  }
+
+  static structured(): StructuredPendingRequest {
+    return new Prism().structured();
   }
 }

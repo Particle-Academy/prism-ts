@@ -3,7 +3,7 @@ export { Prism } from './prism.js';
 export { PrismError } from './errors.js';
 export type { PrismErrorCode, PrismErrorOptions } from './errors.js';
 
-export { FinishReason, ToolChoice, finishReasonFromValue, toolChoiceFromName } from './enums.js';
+export { FinishReason, StructuredMode, ToolChoice, finishReasonFromValue, toolChoiceFromName } from './enums.js';
 
 export { Tool } from './tool.js';
 export type { ToolHandler } from './tool.js';
@@ -61,3 +61,14 @@ export type { JsonObject, JsonPrimitive, JsonValue } from './json.js';
 
 export { fetchTransport } from './http/transport.js';
 export type { HttpRequest, HttpResponse, HttpTransport } from './http/transport.js';
+
+export { StructuredPendingRequest } from './structured/pending-request.js';
+export type { StructuredResponseCallback } from './structured/pending-request.js';
+export { StructuredRequest } from './structured/request.js';
+export type { StructuredRequestOptions } from './structured/request.js';
+export { StructuredResponse } from './structured/response.js';
+export type { StructuredResponseOptions } from './structured/response.js';
+export { extractStructured } from './structured/extract.js';
+export { ObjectSchema, ArraySchema, EnumSchema } from './schema/index.js';
+export type { ObjectSchemaOptions, ArraySchemaOptions, EnumSchemaOptions } from './schema/index.js';
+export { structuredFromTextResponse } from './structured/from-text.js';

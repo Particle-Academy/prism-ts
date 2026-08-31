@@ -24,7 +24,11 @@ export type PrismErrorCode =
   /** The response finished on tool calls; the tool-execution loop is not ported. */
   | 'tool_loop_not_supported'
   /** A value handed to the canonical encoder cannot survive a JSON round trip. */
-  | 'canonical_json_unencodable';
+  | 'canonical_json_unencodable'
+  /** A structured request reached `toRequest()` with no schema set. */
+  | 'missing_schema'
+  /** The model cannot produce structured output at all, by name. */
+  | 'unsupported_structured_model';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -50,6 +54,24 @@ export class PrismError extends Error {
 
   static promptAndMessages(): PrismError {
     return new PrismError('prompt_and_messages', 'You can only use `prompt` or `messages`.');
+  }
+
+  /**
+   * A structured request with no schema.
+   *
+   * Refused rather than defaulted. "Any object" would produce a response that
+   * parses and means nothing, and the caller would discover that at the point
+   * they read a field that was never asked for.
+   */
+  static missingSchema(): PrismError {
+    return new PrismError(
+      'missing_schema',
+      'A structured request needs a schema. Call withSchema() before asStructured().',
+    );
+  }
+
+  static unsupportedStructuredModel(model: string): PrismError {
+    return new PrismError('unsupported_structured_model', `Structured output is not supported for ${model}`);
   }
 
   static maxTokensExceeded(status: string, type: string): PrismError {

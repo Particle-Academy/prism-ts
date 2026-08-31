@@ -50,3 +50,22 @@ export function toolChoiceFromName(name: string): ToolChoice {
       throw new TypeError(`Unknown ToolChoice case ${name}.`);
   }
 }
+
+/**
+ * How to ask a provider for structured output.
+ *
+ * A PURE enum in the reference — the members carry no wire value, because each
+ * provider decides what the mode means on its own API. Backed numerically here
+ * for the same reason `ToolChoice` is: an opaque member cannot be serialized
+ * into a request by accident.
+ *
+ * `Auto` lets the provider pick the strongest method it supports for the model
+ * in hand. `Json` asks only for valid JSON. `Structured` demands the provider's
+ * schema-enforcing mode and fails rather than degrading, which is the one to
+ * choose when a malformed answer would be worse than no answer.
+ */
+export enum StructuredMode {
+  Auto = 1,
+  Json = 2,
+  Structured = 3,
+}

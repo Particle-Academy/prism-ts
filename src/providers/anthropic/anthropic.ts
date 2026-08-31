@@ -1,5 +1,9 @@
 import { canonicalJson } from '../../json.js';
 import { PrismError } from '../../errors.js';
+import { UserMessage } from '../../value-objects/messages/index.js';
+import type { StructuredRequest } from '../../structured/request.js';
+import type { StructuredResponse } from '../../structured/response.js';
+import { structuredFromTextResponse } from '../../structured/from-text.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport } from '../../http/transport.js';
 import type { TextRequest } from '../../text/request.js';
@@ -81,6 +85,26 @@ export class Anthropic extends Provider {
   }
 
   /**
+   * Structured output by ASKING, because Anthropic has no schema-enforcing mode.
+   *
+   * OpenAI can be told to enforce a schema; Anthropic cannot, so the reference
+   * appends a message spelling out the schema and demanding JSON with nothing
+   * around it. That is a request, not a guarantee — which is exactly why
+   * `structured` is nullable and `text` survives beside it. A model that answers
+   * in prose here has not malfunctioned; it has declined, and the caller gets to
+   * see what it said.
+   *
+   * The instruction is appended as a USER message rather than a system prompt,
+   * matching the reference: the caller's own system prompt keeps its meaning,
+   * and the demand arrives as the most recent thing said.
+   */
+  override async structured(request: StructuredRequest): Promise<StructuredResponse> {
+    request.addMessage(new UserMessage(schemaInstruction(request)));
+
+    return structuredFromTextResponse(await this.text(request));
+  }
+
+  /**
    * Anthropic authenticates with `x-api-key`, not a bearer token.
    *
    * Optional headers are OMITTED rather than sent empty when unconfigured.
@@ -119,4 +143,16 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
       : 'Unknown error';
 
   return `${provider} error [${status}]: ${detail}`;
+}
+
+/**
+ * The message that asks for JSON and nothing else.
+ *
+ * Wording tracks the reference deliberately, including the parenthetical about
+ * backticks: models fence JSON by habit, and the phrasing is the only lever
+ * there is. `extractStructured` still unfences as a second line of defence,
+ * because a plea is not a guarantee.
+ */
+function schemaInstruction(request: StructuredRequest): string {
+  return `Respond with ONLY JSON (i.e. not in backticks or a code block, with NO CONTENT outside the JSON) that matches the following schema: \n ${JSON.stringify(request.schema().toObject(), null, 2)}`;
 }

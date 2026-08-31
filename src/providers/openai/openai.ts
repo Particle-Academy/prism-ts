@@ -1,5 +1,10 @@
 import { canonicalJson } from '../../json.js';
+import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
+import type { StructuredRequest } from '../../structured/request.js';
+import type { StructuredResponse } from '../../structured/response.js';
+import { structuredFromTextResponse } from '../../structured/from-text.js';
+import { buildStructuredBody } from './build-structured-body.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport } from '../../http/transport.js';
 import type { TextRequest } from '../../text/request.js';
@@ -54,15 +59,26 @@ export class OpenAI extends Provider {
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
+    return this.#send('text', request, buildRequestBody(request));
+  }
+
+  override async structured(request: StructuredRequest): Promise<StructuredResponse> {
+    // The response is parsed by the TEXT parser and then given its structured
+    // reading, so finish reasons, token-limit failures, usage and rate limits
+    // behave identically on both paths by construction.
+    return structuredFromTextResponse(await this.#send('structured', request, buildStructuredBody(request)));
+  }
+
+  async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
     if (this.apiFormat !== 'responses') {
-      throw PrismError.unsupportedProviderAction(`text in the ${this.apiFormat} api format`, this.providerName);
+      throw PrismError.unsupportedProviderAction(`${action} in the ${this.apiFormat} api format`, this.providerName);
     }
 
     const response = await this.#transport({
       url: `${this.url.replace(/\/+$/, '')}/responses`,
       method: 'POST',
       headers: this.headers(),
-      body: canonicalJson(buildRequestBody(request)),
+      body: canonicalJson(body),
       clientOptions: request.clientOptions(),
     });
 

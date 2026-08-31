@@ -9,7 +9,7 @@ import type { Message } from '../value-objects/messages/index.js';
 import { UserMessage } from '../value-objects/messages/index.js';
 import type { Text } from '../value-objects/media/text.js';
 import type { ProviderTool } from '../value-objects/provider-tool.js';
-import { TextRequest } from './request.js';
+import { TextRequest, type TextRequestOptions } from './request.js';
 import type { TextResponse } from './response.js';
 
 export type TextResponseCallback = (
@@ -184,6 +184,19 @@ export class TextPendingRequest {
    *   two ways of saying the same thing and the reference cannot merge them.
    */
   toRequest(): TextRequest {
+    return new TextRequest(this.requestOptions());
+  }
+
+  /**
+   * Every field this builder has collected, as request options.
+   *
+   * Extracted so a SUBCLASS can build a different request from the same
+   * twenty fields — see `StructuredPendingRequest`. The fields are `#private`,
+   * so a subclass cannot read them directly and the alternative is a second
+   * copy of this list that nobody diffs: add a field to one and forget the
+   * other, and the request builds fine while silently dropping it.
+   */
+  protected requestOptions(): TextRequestOptions {
     if (this.#messages.length > 0 && this.#prompt !== null) {
       throw PrismError.promptAndMessages();
     }
@@ -199,7 +212,7 @@ export class TextPendingRequest {
       messages.push(new UserMessage(this.#prompt, this.#additionalContent));
     }
 
-    return new TextRequest({
+    return {
       model: this.#model,
       providerKey: this.#providerKey,
       systemPrompts: [...this.#systemPrompts],
@@ -216,7 +229,7 @@ export class TextPendingRequest {
       providerOptions: this.#providerOptions,
       providerTools: this.#providerTools,
       reasoningEnabled: this.#reasoningEnabled,
-    });
+    };
   }
 
   async asText(callback?: TextResponseCallback): Promise<TextResponse> {

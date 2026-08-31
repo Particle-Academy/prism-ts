@@ -145,3 +145,139 @@ export class BooleanSchema implements Schema {
     };
   }
 }
+
+export interface ObjectSchemaOptions {
+  requiredFields?: readonly string[];
+  allowAdditionalProperties?: boolean;
+  nullable?: boolean;
+}
+
+/**
+ * The schema a structured response is shaped by.
+ *
+ * `allowAdditionalProperties` DEFAULTS TO FALSE, matching the reference, and the
+ * default matters more here than it looks: OpenAI's strict schema mode REJECTS a
+ * schema that permits extra properties, so a permissive default would make the
+ * strongest structured mode unusable and silently push every request down to
+ * plain JSON mode.
+ */
+export class ObjectSchema implements Schema {
+  readonly requiredFields: readonly string[];
+
+  readonly allowAdditionalProperties: boolean;
+
+  readonly nullable: boolean;
+
+  constructor(
+    readonly name: string,
+    readonly description: string,
+    readonly properties: readonly Schema[] = [],
+    options: ObjectSchemaOptions = {},
+  ) {
+    this.requiredFields = options.requiredFields ?? [];
+    this.allowAdditionalProperties = options.allowAdditionalProperties ?? false;
+    this.nullable = options.nullable ?? false;
+  }
+
+  toObject(): JsonObject {
+    const properties: JsonObject = {};
+
+    for (const property of this.properties) {
+      properties[property.name] = property.toObject();
+    }
+
+    // `properties` is dropped when empty rather than sent as `{}`, matching the
+    // reference's not-null filter. `required` and `additionalProperties` are
+    // always sent: `[]` and `false` are meaningful answers, not absences.
+    const schema: JsonObject = {
+      description: this.description,
+      type: schemaType('object', this.nullable),
+    };
+
+    if (this.properties.length > 0) {
+      schema.properties = properties;
+    }
+
+    schema.required = [...this.requiredFields];
+    schema.additionalProperties = this.allowAdditionalProperties;
+
+    return schema;
+  }
+}
+
+export interface ArraySchemaOptions {
+  minItems?: number | null;
+  maxItems?: number | null;
+  nullable?: boolean;
+}
+
+export class ArraySchema implements Schema {
+  readonly minItems: number | null;
+
+  readonly maxItems: number | null;
+
+  readonly nullable: boolean;
+
+  constructor(
+    readonly name: string,
+    readonly description: string,
+    readonly items: Schema,
+    options: ArraySchemaOptions = {},
+  ) {
+    this.minItems = options.minItems ?? null;
+    this.maxItems = options.maxItems ?? null;
+    this.nullable = options.nullable ?? false;
+  }
+
+  toObject(): JsonObject {
+    const schema: JsonObject = {
+      description: this.description,
+      type: schemaType('array', this.nullable),
+      items: this.items.toObject(),
+    };
+
+    // Present only when set. The reference appends these conditionally rather
+    // than emitting nulls, and a `minItems: null` is rejected by strict mode.
+    if (this.minItems !== null) {
+      schema.minItems = this.minItems;
+    }
+
+    if (this.maxItems !== null) {
+      schema.maxItems = this.maxItems;
+    }
+
+    return schema;
+  }
+}
+
+export interface EnumSchemaOptions {
+  nullable?: boolean;
+}
+
+/**
+ * A closed set of allowed values.
+ *
+ * When nullable, the reference adds `null` to the OPTIONS as well as to the
+ * type union — a nullable enum whose options omit null describes a value that
+ * can be null and may not be, which no validator can satisfy.
+ */
+export class EnumSchema implements Schema {
+  readonly nullable: boolean;
+
+  constructor(
+    readonly name: string,
+    readonly description: string,
+    readonly options: readonly (string | number | null)[],
+    schemaOptions: EnumSchemaOptions = {},
+  ) {
+    this.nullable = schemaOptions.nullable ?? false;
+  }
+
+  toObject(): JsonObject {
+    return {
+      description: this.description,
+      enum: this.nullable ? [...this.options, null] : [...this.options],
+      type: schemaType('string', this.nullable),
+    };
+  }
+}

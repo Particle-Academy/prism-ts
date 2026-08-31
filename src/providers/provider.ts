@@ -1,6 +1,8 @@
 import { PrismError } from '../errors.js';
 import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
+import type { StructuredRequest } from '../structured/request.js';
+import type { StructuredResponse } from '../structured/response.js';
 
 /**
  * The provider contract.
@@ -9,7 +11,7 @@ import type { TextResponse } from '../text/response.js';
  * implements only what it actually supports and asking for anything else fails
  * the same way everywhere instead of returning a plausible-looking empty result.
  *
- * Only `text` is part of this port's slice. The remaining capabilities keep
+ * `text` and `structured` are part of this port's slice. The remaining capabilities keep
  * their place in the contract but take `unknown` requests, because their request
  * and response types are not ported.
  */
@@ -25,7 +27,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('stream', this.providerName);
   }
 
-  structured(_request: unknown): never {
+  structured(_request: StructuredRequest): Promise<StructuredResponse> {
     throw PrismError.unsupportedProviderAction('structured', this.providerName);
   }
 
