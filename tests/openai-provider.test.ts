@@ -150,15 +150,17 @@ describe('OpenAI provider', () => {
   it('throws with a code for every capability it does not implement', () => {
     const provider = new OpenAI({ apiKey: 'sk-test' });
 
-    // `structured` left this list when the capability shipped, and `batch` and
-    // `files` left it in turn. That is the point of listing them by name rather
-    // than reflecting over the class: implementing one has to be a deliberate
-    // edit here.
+    // `structured` left this list when the capability shipped, and `batch`,
+    // `files` and `fim` left it in turn. That is the point of listing them by
+    // name rather than reflecting over the class: implementing one has to be a
+    // deliberate edit here.
     //
-    // `fim` is the only one left, and it is blocked on Mistral rather than
-    // pending — see G-14 in the port gaps register.
+    // The list is now EMPTY for OpenAI: it implements every capability the
+    // reference gives it. `fim` is the last one, and it lives on Mistral —
+    // asserted in mistral-provider.test.ts, and refused here, because OpenAI
+    // has no FIM endpoint at all.
     try {
-      provider.fim(undefined);
+      provider.fim(Prism.fim().using('openai', 'gpt-4o').withPrompt('def f(').toRequest());
       expect.unreachable('should have thrown');
     } catch (error) {
       expect((error as PrismError).code).toBe('unsupported_provider_action');

@@ -22,6 +22,8 @@ import type {
   RetrieveBatchRequest,
 } from '../batch/request.js';
 import type { BatchJob, BatchListResult, BatchResultItem } from '../batch/batch-job.js';
+import type { FimRequest } from '../fim/request.js';
+import type { FimResponse } from '../fim/response.js';
 import type { ModerationResponse } from '../moderation/response.js';
 import type { ImagesResponse } from '../images/response.js';
 import type { EmbeddingsResponse } from '../embeddings/response.js';
@@ -76,7 +78,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('speechToText', this.providerName);
   }
 
-  fim(_request: unknown): never {
+  fim(_request: FimRequest): Promise<FimResponse> {
     throw PrismError.unsupportedProviderAction('fim', this.providerName);
   }
 

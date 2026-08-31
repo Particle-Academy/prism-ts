@@ -55,12 +55,13 @@ describe('agent contract', () => {
       'batch',
       'embeddings',
       'files',
+      'fim',
       'images',
       'moderation',
       'structured',
       'text',
     ]);
-    expect(described.providers_implemented).toEqual(['anthropic', 'openai']);
+    expect(described.providers_implemented).toEqual(['anthropic', 'mistral', 'openai']);
   });
 
   it('reports whether this process is running the code on disk', async () => {
@@ -94,7 +95,9 @@ describe('agent contract', () => {
       expect(operations, `${name} missing from provider_operations`).toContain(name);
     }
 
-    // G-14: fim is Mistral-only in the reference and no port has Mistral.
-    expect(operations).not.toContain('fim');
+    // `fim` is here now that Mistral is — it was absent while G-14 was open,
+    // and this line is what closing that gap looks like from the agent's side.
+    // It is an entry point AND an operation, unlike stream and the audio pair.
+    expect(operations).toContain('fim');
   });
 });

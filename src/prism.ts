@@ -1,3 +1,4 @@
+import { FimPendingRequest } from './fim/pending-request.js';
 import { BatchPendingRequest } from './batch/pending-request.js';
 import { TextPendingRequest } from './text/pending-request.js';
 import { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
@@ -83,5 +84,13 @@ export class Prism {
 
   static batch(): BatchPendingRequest {
     return new Prism().batch();
+  }
+
+  fim(): FimPendingRequest {
+    return new FimPendingRequest();
+  }
+
+  static fim(): FimPendingRequest {
+    return new Prism().fim();
   }
 }

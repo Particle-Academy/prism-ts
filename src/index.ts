@@ -179,3 +179,11 @@ export {
   parseBatchResultItem,
   parseBatchResults,
 } from './providers/openai/batch.js';
+
+export { FimPendingRequest } from './fim/pending-request.js';
+export { FimRequest } from './fim/request.js';
+export { FimResponse } from './fim/response.js';
+export { Mistral } from './providers/mistral/mistral.js';
+export type { MistralConfig } from './providers/mistral/mistral.js';
+export { MistralStreamMapper } from './providers/mistral/stream-events.js';
+export { buildFimBody, parseFimResponse } from './providers/mistral/fim.js';
