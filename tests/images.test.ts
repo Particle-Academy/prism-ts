@@ -32,7 +32,9 @@ describe('images', () => {
 
     expect(calls[0]?.url).toContain('/images/generations');
     expect(JSON.parse(calls[0]?.body ?? '{}')).toEqual({ model: 'gpt-image-1', prompt: 'a cat' });
-    expect(response.firstImage()?.base64).toBe('aGk=');
+    // `base64()` is a method now that GeneratedImage extends Media: the base
+    // computes it lazily from raw content when only bytes are known.
+    expect(response.firstImage()?.base64()).toBe('aGk=');
     expect(response.firstImage()?.url).toBeNull();
   });
 

@@ -114,3 +114,9 @@ export { ModerationResponse } from './moderation/response.js';
 export type { ModerationResponseOptions } from './moderation/response.js';
 export { ModerationResult } from './value-objects/moderation-result.js';
 export { buildModerationBody, parseModerationResponse } from './providers/openai/moderation.js';
+
+export { Media, guessMimeType } from './value-objects/media/media.js';
+export { Image } from './value-objects/media/image.js';
+export { Audio } from './value-objects/media/audio.js';
+export { Document } from './value-objects/media/document.js';
+export { Video } from './value-objects/media/video.js';

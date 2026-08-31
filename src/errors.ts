@@ -36,7 +36,11 @@ export type PrismErrorCode =
   /** An images request reached `toRequest()` with no prompt. */
   | 'no_image_prompt'
   /** A moderation request reached `toRequest()` with no input. */
-  | 'no_moderation_input';
+  | 'no_moderation_input'
+  /** A media file could not be read from disk. */
+  | 'unreadable_media_file'
+  /** A media payload could not be fetched from its url. */
+  | 'unfetchable_media';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -103,6 +107,14 @@ export class PrismError extends Error {
    * false, and a caller gating on it lets everything through. A safety check
    * that fails OPEN because it was called wrong is the worst shape here.
    */
+  static unreadableMediaFile(path: string, cause?: unknown): PrismError {
+    return new PrismError('unreadable_media_file', `Could not read the media file [${path}].`, { cause });
+  }
+
+  static unfetchableMedia(reason: string): PrismError {
+    return new PrismError('unfetchable_media', `Could not fetch the media payload: ${reason}.`);
+  }
+
   static noModerationInput(): PrismError {
     return new PrismError(
       'no_moderation_input',
