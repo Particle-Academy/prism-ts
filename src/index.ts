@@ -106,3 +106,11 @@ export { ImagesResponse } from './images/response.js';
 export type { ImagesResponseOptions } from './images/response.js';
 export { GeneratedImage } from './value-objects/generated-image.js';
 export { buildImagesBody, parseImagesResponse } from './providers/openai/images.js';
+
+export { ModerationPendingRequest } from './moderation/pending-request.js';
+export { ModerationRequest } from './moderation/request.js';
+export type { ModerationRequestOptions } from './moderation/request.js';
+export { ModerationResponse } from './moderation/response.js';
+export type { ModerationResponseOptions } from './moderation/response.js';
+export { ModerationResult } from './value-objects/moderation-result.js';
+export { buildModerationBody, parseModerationResponse } from './providers/openai/moderation.js';

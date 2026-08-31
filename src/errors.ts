@@ -34,7 +34,9 @@ export type PrismErrorCode =
   /** `fromFile()` could not read the path it was given. */
   | 'unreadable_input_file'
   /** An images request reached `toRequest()` with no prompt. */
-  | 'no_image_prompt';
+  | 'no_image_prompt'
+  /** A moderation request reached `toRequest()` with no input. */
+  | 'no_moderation_input';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -90,6 +92,21 @@ export class PrismError extends Error {
     return new PrismError(
       'no_embedding_input',
       'An embeddings request needs at least one input. Call fromInput(), fromArray() or fromFile().',
+    );
+  }
+
+  /**
+   * A moderation request with no input.
+   *
+   * Refused rather than sent, and this matters more than the other empty-input
+   * guards: an empty moderation call returns no results, `isFlagged()` is then
+   * false, and a caller gating on it lets everything through. A safety check
+   * that fails OPEN because it was called wrong is the worst shape here.
+   */
+  static noModerationInput(): PrismError {
+    return new PrismError(
+      'no_moderation_input',
+      'A moderation request needs at least one input. Call withInput().',
     );
   }
 

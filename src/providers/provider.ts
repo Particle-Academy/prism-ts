@@ -3,6 +3,8 @@ import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
 import type { EmbeddingsRequest } from '../embeddings/request.js';
 import type { ImagesRequest } from '../images/request.js';
+import type { ModerationRequest } from '../moderation/request.js';
+import type { ModerationResponse } from '../moderation/response.js';
 import type { ImagesResponse } from '../images/response.js';
 import type { EmbeddingsResponse } from '../embeddings/response.js';
 import type { StreamEvent } from '../streaming/events.js';
@@ -44,7 +46,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('images', this.providerName);
   }
 
-  moderation(_request: unknown): never {
+  moderation(_request: ModerationRequest): Promise<ModerationResponse> {
     throw PrismError.unsupportedProviderAction('moderation', this.providerName);
   }
 

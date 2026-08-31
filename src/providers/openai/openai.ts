@@ -11,6 +11,9 @@ import { buildEmbeddingsBody, parseEmbeddingsResponse } from './embeddings.js';
 import type { ImagesRequest } from '../../images/request.js';
 import type { ImagesResponse } from '../../images/response.js';
 import { buildImagesBody, parseImagesResponse } from './images.js';
+import type { ModerationRequest } from '../../moderation/request.js';
+import type { ModerationResponse } from '../../moderation/response.js';
+import { buildModerationBody, parseModerationResponse } from './moderation.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
 import type { HttpStreamTransport } from '../../http/transport.js';
@@ -161,6 +164,25 @@ export class OpenAI extends Provider {
     }
 
     return parseImagesResponse(response.body, request.model());
+  }
+
+  override async moderation(request: ModerationRequest): Promise<ModerationResponse> {
+    const response = await this.#transport({
+      url: `${this.url.replace(/\/+$/, '')}/moderations`,
+      method: 'POST',
+      headers: this.headers(),
+      body: canonicalJson(buildModerationBody(request)),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, response.body), {
+        httpStatus: response.status,
+        responseBody: response.rawBody,
+      });
+    }
+
+    return parseModerationResponse(response.body, request.model());
   }
 
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {

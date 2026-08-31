@@ -1,6 +1,7 @@
 import { TextPendingRequest } from './text/pending-request.js';
 import { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
 import { ImagesPendingRequest } from './images/pending-request.js';
+import { ModerationPendingRequest } from './moderation/pending-request.js';
 import { StructuredPendingRequest } from './structured/pending-request.js';
 
 /**
@@ -47,5 +48,13 @@ export class Prism {
 
   static images(): ImagesPendingRequest {
     return new Prism().images();
+  }
+
+  moderation(): ModerationPendingRequest {
+    return new ModerationPendingRequest();
+  }
+
+  static moderation(): ModerationPendingRequest {
+    return new Prism().moderation();
   }
 }
