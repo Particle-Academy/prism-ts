@@ -42,4 +42,38 @@ describe('agent contract', () => {
       expect(tool.inputSchema, `${name} has no input schema`).toBeTruthy();
     }
   });
+
+  it('reports capabilities, not just a list of exported type names', async () => {
+    // The agent was once confidently wrong about a provider it had never had,
+    // because nothing let it check. An export list has the same failure mode
+    // for capabilities: it invites inference from type names.
+    const described = await tools.describe_port.handler({});
+
+    expect(described.capabilities_implemented).toEqual([
+      'audio',
+      'batch',
+      'embeddings',
+      'files',
+      'images',
+      'moderation',
+      'structured',
+      'text',
+    ]);
+    expect(described.providers_implemented).toEqual(['anthropic', 'openai']);
+  });
+
+  it('separates entry points from provider operations', async () => {
+    // They are different lists and only the second is what the parity manifest
+    // counts: `stream` is a terminal on the text builder and the audio pair are
+    // terminals on `audio`. An agent comparing eight entry points against the
+    // manifest's twelve would report a gap that is not there.
+    const { provider_operations: operations } = await tools.describe_port.handler({});
+
+    for (const name of ['stream', 'textToSpeech', 'speechToText']) {
+      expect(operations, `${name} missing from provider_operations`).toContain(name);
+    }
+
+    // G-14: fim is Mistral-only in the reference and no port has Mistral.
+    expect(operations).not.toContain('fim');
+  });
 });

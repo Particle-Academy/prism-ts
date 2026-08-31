@@ -224,7 +224,7 @@ export const tools = {
 
   describe_port: {
     description:
-      'What this port actually implements — providers, and the public API surface. Read from the source, not remembered. Call this before reasoning about whether a feature exists here.',
+      'What this port actually implements — providers, capabilities, and the public API surface. Read from the source, not remembered. Call this before reasoning about whether a feature exists here.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async handler() {
       // Facts, from disk. The agent was confidently wrong about a provider it
@@ -244,12 +244,43 @@ export const tools = {
         )
         .catch(() => []);
 
+      // The capability entry points, read from the Prism class the same way
+      // providers are read from the directory. Reporting only `public_exports`
+      // made an agent infer capabilities from a list of type names, which is
+      // the same guessing that made it wrong about providers.
+      const capabilities = await readFile(resolve(ROOT, 'src/prism.ts'), 'utf8')
+        .then(source => [...source.matchAll(/^ {2}static (\w+)\(/gm)].map(match => match[1]).sort())
+        .catch(() => []);
+
+      // What a provider can actually be ASKED to do, which is a different list
+      // from the entry points and the one the parity manifest counts. `stream`
+      // is a terminal on the text builder and `textToSpeech`/`speechToText` are
+      // terminals on `audio`, so an agent comparing eight entry points against
+      // the manifest's twelve would report a gap that is not there.
+      const operations = await Promise.all(
+        providers.map(name =>
+          readFile(resolve(ROOT, `src/providers/${name}/${name}.ts`), 'utf8')
+            .then(source => [...source.matchAll(/^ {2}override (?:async )?\*?(\w+)\(/gm)].map(m => m[1]))
+            .catch(() => [])
+        )
+      ).then(lists => [...new Set(lists.flat())].sort());
+
       return {
         language: LANGUAGE,
         providers_implemented: providers,
         provider_count: providers.length,
+        capabilities_implemented: [...new Set(capabilities)],
+        capability_count: new Set(capabilities).size,
+        provider_operations: operations,
         public_exports: [...new Set(exports)],
-        note: 'A provider absent from providers_implemented is not implemented here at all — not merely missing a field.',
+        note:
+          'A provider or capability absent from these lists is not implemented here at all — not ' +
+          'merely missing a field. capabilities_implemented are ENTRY POINTS (Prism.x()); ' +
+          'provider_operations is what a provider can be asked to do, and is the list the parity ' +
+          'manifest counts — they differ because stream is a terminal on the text builder and ' +
+          'textToSpeech/speechToText are terminals on audio. `fim` is absent from both on ' +
+          'purpose: it is Mistral-only in the reference and no port has Mistral (port gaps ' +
+          'register, G-14).',
       };
     },
   },
