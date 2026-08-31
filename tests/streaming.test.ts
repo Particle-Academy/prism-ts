@@ -4,7 +4,9 @@ import {
   Prism,
   StreamEndEvent,
   StreamEventType,
+  TextCompleteEvent,
   TextDeltaEvent,
+  ToolCallEvent,
   sseData,
 } from '../src/index.js';
 import type { HttpRequest, HttpStreamResponse, HttpStreamTransport, StreamEvent } from '../src/index.js';
@@ -176,5 +178,127 @@ describe('streaming', () => {
           .asStream(),
       ),
     ).rejects.toThrowError(/bad key/);
+  });
+});
+
+const ANTHROPIC_SSE = [
+  'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5","usage":{"input_tokens":7,"output_tokens":0}}}\n\n',
+  'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+  'data: {"type":"ping"}\n\n',
+  'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}\n\n',
+  'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}\n\n',
+  'data: {"type":"content_block_stop","index":0}\n\n',
+  'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}\n\n',
+  'data: {"type":"message_stop"}\n\n',
+];
+
+describe('Anthropic streaming', () => {
+  it('accumulates deltas and completes with the text it actually saw', async () => {
+    const { transport } = streamTransport(ANTHROPIC_SSE);
+
+    const events = await collect(
+      Prism.text()
+        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .withPrompt('Hi')
+        .asStream(),
+    );
+
+    const types = events.map((event) => event.type());
+    const complete = events.find((event) => event instanceof TextCompleteEvent);
+    const end = events.at(-1) as StreamEndEvent;
+
+    // `ping` produces nothing a consumer can use and is dropped rather than
+    // surfaced as noise.
+    expect(types).toEqual([
+      StreamEventType.StreamStart,
+      StreamEventType.TextStart,
+      StreamEventType.TextDelta,
+      StreamEventType.TextDelta,
+      StreamEventType.TextComplete,
+      StreamEventType.StreamEnd,
+    ]);
+
+    // Truthful because it was accumulated: `content_block_stop` carries no text
+    // of its own, so without the mapper's memory this would be empty.
+    expect((complete as TextCompleteEvent).text).toBe('Hello');
+    expect(end.finishReason).toBe(FinishReason.Stop);
+    // Anthropic reports output tokens cumulatively on message_delta, so the
+    // last one wins rather than summing.
+    expect(end.usage?.completionTokens).toBe(4);
+    expect(end.usage?.promptTokens).toBe(7);
+  });
+
+  it('emits a tool call once its arguments have finished arriving', async () => {
+    // A half-parsed JSON fragment is not something a consumer can use, so the
+    // partials accumulate and only the finished call is emitted.
+    const { transport } = streamTransport([
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5"}}\n\n',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"lookup"}}\n\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"q\\":"}}\n\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"ada\\"}"}}\n\n',
+      'data: {"type":"content_block_stop","index":0}\n\n',
+      'data: {"type":"message_stop"}\n\n',
+    ]);
+
+    const events = await collect(
+      Prism.text()
+        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .withPrompt('Hi')
+        .asStream(),
+    );
+
+    const call = events.find((event) => event instanceof ToolCallEvent) as ToolCallEvent;
+
+    expect(call.toolCall.name).toBe('lookup');
+    expect(call.toolCall.parsedArguments()).toEqual({ q: 'ada' });
+    // The tool block opening emitted nothing: a tool call is only meaningful
+    // once its arguments exist.
+    expect(events.filter((event) => event.type() === StreamEventType.TextStart)).toHaveLength(0);
+  });
+
+  it('gives each stream its own mapper', async () => {
+    // The mapper carries a message id and accumulated text. A shared instance
+    // would let two concurrent generations read each other's blocks — a bug
+    // that only appears under load and looks like the model hallucinating.
+    const first = streamTransport(ANTHROPIC_SSE);
+    const second = streamTransport(ANTHROPIC_SSE);
+
+    const [a, b] = await Promise.all([
+      collect(
+        Prism.text()
+          .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: first.transport })
+          .withPrompt('Hi')
+          .asStream(),
+      ),
+      collect(
+        Prism.text()
+          .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: second.transport })
+          .withPrompt('Hi')
+          .asStream(),
+      ),
+    ]);
+
+    const textOf = (events: StreamEvent[]): string =>
+      (events.find((event) => event instanceof TextCompleteEvent) as TextCompleteEvent).text;
+
+    expect(textOf(a)).toBe('Hello');
+    expect(textOf(b)).toBe('Hello');
+  });
+
+  it('reads max_tokens as a length finish', async () => {
+    const { transport } = streamTransport([
+      'data: {"type":"message_start","message":{"id":"m","model":"claude-sonnet-4-5"}}\n\n',
+      'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n',
+      'data: {"type":"message_stop"}\n\n',
+    ]);
+
+    const events = await collect(
+      Prism.text()
+        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .withPrompt('Hi')
+        .asStream(),
+    );
+
+    expect((events.at(-1) as StreamEndEvent).finishReason).toBe(FinishReason.Length);
   });
 });

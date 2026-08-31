@@ -1,11 +1,16 @@
-import { canonicalJson } from '../../json.js';
+import { canonicalJson, isJsonObject } from '../../json.js';
+import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
 import { UserMessage } from '../../value-objects/messages/index.js';
 import type { StructuredRequest } from '../../structured/request.js';
 import type { StructuredResponse } from '../../structured/response.js';
 import { structuredFromTextResponse } from '../../structured/from-text.js';
 import type { HttpTransport } from '../../http/transport.js';
-import { fetchTransport } from '../../http/transport.js';
+import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
+import type { HttpStreamTransport } from '../../http/transport.js';
+import type { StreamEvent } from '../../streaming/events.js';
+import { sseData } from '../../streaming/sse.js';
+import { AnthropicStreamMapper } from './stream-events.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
 import { Provider } from '../provider.js';
@@ -21,6 +26,7 @@ export interface AnthropicConfig {
   /** Sent as `anthropic-beta` when set. */
   betaFeatures?: string | null;
   transport?: HttpTransport;
+  streamTransport?: HttpStreamTransport;
 }
 
 const DEFAULT_URL = 'https://api.anthropic.com/v1';
@@ -55,6 +61,8 @@ export class Anthropic extends Provider {
 
   readonly #transport: HttpTransport;
 
+  readonly #streamTransport: HttpStreamTransport;
+
   constructor(config: AnthropicConfig = {}) {
     super();
 
@@ -63,6 +71,7 @@ export class Anthropic extends Provider {
     this.apiVersion = config.apiVersion ?? readEnv('ANTHROPIC_API_VERSION') ?? DEFAULT_API_VERSION;
     this.betaFeatures = config.betaFeatures ?? readEnv('ANTHROPIC_BETA_FEATURES') ?? null;
     this.#transport = config.transport ?? fetchTransport;
+    this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
@@ -82,6 +91,42 @@ export class Anthropic extends Provider {
     }
 
     return parseTextResponse(request, response.body, { rateLimits: parseRateLimits(response.headers) });
+  }
+
+  /**
+   * The same generation, delivered as it arrives.
+   *
+   * The mapper is constructed PER CALL, not shared. It carries the message id,
+   * the accumulated text and the stop reason for one stream; a shared instance
+   * would let two concurrent generations read each other's blocks, which is the
+   * kind of bug that only appears under load and looks like the model
+   * hallucinating.
+   */
+  override async *stream(request: TextRequest): AsyncGenerator<StreamEvent> {
+    const response = await this.#streamTransport({
+      url: `${this.url.replace(/\/+$/, '')}/messages`,
+      method: 'POST',
+      headers: { ...this.headers(), Accept: 'text/event-stream' },
+      body: canonicalJson({ ...buildRequestBody(request), stream: true }),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(
+        describeHttpFailure(this.providerName, response.status, await collectJson(response.chunks)),
+        { httpStatus: response.status },
+      );
+    }
+
+    const mapper = new AnthropicStreamMapper();
+
+    for await (const payload of sseData(response.chunks)) {
+      const event = mapper.map(parsePayload(payload));
+
+      if (event !== null) {
+        yield event;
+      }
+    }
   }
 
   /**
@@ -155,4 +200,31 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
  */
 function schemaInstruction(request: StructuredRequest): string {
   return `Respond with ONLY JSON (i.e. not in backticks or a code block, with NO CONTENT outside the JSON) that matches the following schema: \n ${JSON.stringify(request.schema().toObject(), null, 2)}`;
+}
+
+
+/** An SSE payload that is not JSON is skipped rather than fatal. */
+function parsePayload(payload: string): JsonObject {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+
+    return isJsonObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Drain a non-stream body so an HTTP failure can still report what it said. */
+async function collectJson(chunks: AsyncIterable<string>): Promise<unknown> {
+  let text = '';
+
+  for await (const chunk of chunks) {
+    text += chunk;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
