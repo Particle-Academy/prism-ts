@@ -32,7 +32,9 @@ export type PrismErrorCode =
   /** An embeddings request reached `toRequest()` with no input. */
   | 'no_embedding_input'
   /** `fromFile()` could not read the path it was given. */
-  | 'unreadable_input_file';
+  | 'unreadable_input_file'
+  /** An images request reached `toRequest()` with no prompt. */
+  | 'no_image_prompt';
 
 export interface PrismErrorOptions {
   cause?: unknown;
@@ -89,6 +91,10 @@ export class PrismError extends Error {
       'no_embedding_input',
       'An embeddings request needs at least one input. Call fromInput(), fromArray() or fromFile().',
     );
+  }
+
+  static noImagePrompt(): PrismError {
+    return new PrismError('no_image_prompt', 'An images request needs a prompt. Call withPrompt().');
   }
 
   static unreadableInputFile(path: string, cause?: unknown): PrismError {

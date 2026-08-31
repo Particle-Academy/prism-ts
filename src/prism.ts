@@ -1,5 +1,6 @@
 import { TextPendingRequest } from './text/pending-request.js';
 import { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
+import { ImagesPendingRequest } from './images/pending-request.js';
 import { StructuredPendingRequest } from './structured/pending-request.js';
 
 /**
@@ -38,5 +39,13 @@ export class Prism {
 
   static embeddings(): EmbeddingsPendingRequest {
     return new Prism().embeddings();
+  }
+
+  images(): ImagesPendingRequest {
+    return new ImagesPendingRequest();
+  }
+
+  static images(): ImagesPendingRequest {
+    return new Prism().images();
   }
 }

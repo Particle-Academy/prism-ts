@@ -2,6 +2,8 @@ import { PrismError } from '../errors.js';
 import type { TextRequest } from '../text/request.js';
 import type { TextResponse } from '../text/response.js';
 import type { EmbeddingsRequest } from '../embeddings/request.js';
+import type { ImagesRequest } from '../images/request.js';
+import type { ImagesResponse } from '../images/response.js';
 import type { EmbeddingsResponse } from '../embeddings/response.js';
 import type { StreamEvent } from '../streaming/events.js';
 import type { StructuredRequest } from '../structured/request.js';
@@ -38,7 +40,7 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('embeddings', this.providerName);
   }
 
-  images(_request: unknown): never {
+  images(_request: ImagesRequest): Promise<ImagesResponse> {
     throw PrismError.unsupportedProviderAction('images', this.providerName);
   }
 

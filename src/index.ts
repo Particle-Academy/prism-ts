@@ -98,3 +98,11 @@ export type { EmbeddingsResponseOptions } from './embeddings/response.js';
 export { Embedding } from './value-objects/embedding.js';
 export { EmbeddingsUsage } from './value-objects/embeddings-usage.js';
 export { buildEmbeddingsBody, parseEmbeddingsResponse } from './providers/openai/embeddings.js';
+
+export { ImagesPendingRequest } from './images/pending-request.js';
+export { ImagesRequest } from './images/request.js';
+export type { ImagesRequestOptions } from './images/request.js';
+export { ImagesResponse } from './images/response.js';
+export type { ImagesResponseOptions } from './images/response.js';
+export { GeneratedImage } from './value-objects/generated-image.js';
+export { buildImagesBody, parseImagesResponse } from './providers/openai/images.js';

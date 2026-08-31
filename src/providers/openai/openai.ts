@@ -8,6 +8,9 @@ import { buildStructuredBody } from './build-structured-body.js';
 import type { EmbeddingsRequest } from '../../embeddings/request.js';
 import type { EmbeddingsResponse } from '../../embeddings/response.js';
 import { buildEmbeddingsBody, parseEmbeddingsResponse } from './embeddings.js';
+import type { ImagesRequest } from '../../images/request.js';
+import type { ImagesResponse } from '../../images/response.js';
+import { buildImagesBody, parseImagesResponse } from './images.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
 import type { HttpStreamTransport } from '../../http/transport.js';
@@ -139,6 +142,25 @@ export class OpenAI extends Provider {
     }
 
     return parseEmbeddingsResponse(response.body);
+  }
+
+  override async images(request: ImagesRequest): Promise<ImagesResponse> {
+    const response = await this.#transport({
+      url: `${this.url.replace(/\/+$/, '')}/images/generations`,
+      method: 'POST',
+      headers: this.headers(),
+      body: canonicalJson(buildImagesBody(request)),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, response.body), {
+        httpStatus: response.status,
+        responseBody: response.rawBody,
+      });
+    }
+
+    return parseImagesResponse(response.body, request.model());
   }
 
   async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
