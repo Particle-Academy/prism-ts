@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { canonicalJson, isJsonObject } from '../../json.js';
 import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
@@ -22,14 +23,9 @@ import {
   parseSpeechResponse,
   parseTranscriptionResponse,
 } from './audio.js';
-import type {
-  DeleteFileRequest,
-  DownloadFileRequest,
-  GetFileMetadataRequest,
-  ListFilesRequest,
-  UploadFileRequest,
-} from '../../files/request.js';
+import type { DeleteFileRequest, GetFileMetadataRequest, ListFilesRequest } from '../../files/request.js';
 import type { DeleteFileResult, FileData, FileListResult } from '../../files/file-data.js';
+import { DownloadFileRequest, UploadFileRequest } from '../../files/request.js';
 import {
   buildListQuery,
   buildUploadForm,
@@ -37,6 +33,22 @@ import {
   parseFileData,
   parseFileListResponse,
 } from './files.js';
+import type {
+  BatchRequest,
+  CancelBatchRequest,
+  GetBatchResultsRequest,
+  ListBatchesRequest,
+} from '../../batch/request.js';
+import { RetrieveBatchRequest } from '../../batch/request.js';
+import type { BatchJob, BatchListResult, BatchResultItem } from '../../batch/batch-job.js';
+import {
+  buildBatchBody,
+  buildBatchInputFile,
+  buildBatchListQuery,
+  parseBatchJob,
+  parseBatchListResponse,
+  parseBatchResults,
+} from './batch.js';
 import type { HttpTransport } from '../../http/transport.js';
 import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
 import type { HttpBinaryTransport, HttpStreamTransport, MultipartBody } from '../../http/transport.js';
@@ -307,27 +319,135 @@ export class OpenAI extends Provider {
     return response.bytes;
   }
 
+  override async batch(request: BatchRequest): Promise<BatchJob> {
+    // Either/or, checked here rather than on the request, because it is a
+    // PROVIDER rule: a provider that accepted inline items would have nothing
+    // to complain about.
+    if (request.inputFileId !== null && request.items !== null) {
+      throw PrismError.providerResponseError(
+        'OpenAI batch takes either an input file id or items, not both.',
+      );
+    }
+
+    if (request.inputFileId === null && request.items === null) {
+      throw PrismError.providerResponseError('OpenAI batch needs either an input file id or items.');
+    }
+
+    const inputFileId =
+      request.inputFileId ??
+      (
+        await this.uploadFile(
+          new UploadFileRequest({
+            providerKey: 'openai',
+            filename: `prism-batch-${randomUUID()}.jsonl`,
+            content: new TextEncoder().encode(buildBatchInputFile(request.items ?? [])),
+            mimeType: 'application/jsonl',
+            clientOptions: request.clientOptions(),
+            // `purpose` MUST be `batch` for a file the batch endpoint will
+            // read, so it is set here rather than inherited from whatever the
+            // caller passed for the batch itself.
+            providerOptions: { purpose: 'batch' },
+          }),
+        )
+      ).id;
+
+    return parseBatchJob(
+      await this.#file(
+        'POST',
+        'batches',
+        request.clientOptions(),
+        undefined,
+        buildBatchBody(inputFileId, request.providerOptions('completion_window')),
+      ),
+    );
+  }
+
+  override async retrieveBatch(request: RetrieveBatchRequest): Promise<BatchJob> {
+    return parseBatchJob(
+      await this.#file('GET', `batches/${encodeURIComponent(request.batchId)}`, request.clientOptions()),
+    );
+  }
+
+  override async listBatches(request: ListBatchesRequest): Promise<BatchListResult> {
+    const query = new URLSearchParams(buildBatchListQuery(request)).toString();
+    const path = query === '' ? 'batches' : `batches?${query}`;
+
+    return parseBatchListResponse(await this.#file('GET', path, request.clientOptions()));
+  }
+
+  override async cancelBatch(request: CancelBatchRequest): Promise<BatchJob> {
+    return parseBatchJob(
+      await this.#file(
+        'POST',
+        `batches/${encodeURIComponent(request.batchId)}/cancel`,
+        request.clientOptions(),
+      ),
+    );
+  }
+
   /**
-   * One round trip for the four file operations that answer with JSON.
+   * Every result in a batch, from the files it wrote.
+   *
+   * BOTH files are read, output and error, because a batch where some requests
+   * succeeded and others failed writes to both — reading only the output file
+   * would silently drop every failure and report a clean run.
+   *
+   * An unfinished batch has neither, and answers with an empty list rather than
+   * an error: nothing went wrong, there is just nothing yet.
+   */
+  override async getBatchResults(request: GetBatchResultsRequest): Promise<readonly BatchResultItem[]> {
+    const batch = await this.retrieveBatch(
+      new RetrieveBatchRequest({
+        providerKey: request.providerKey(),
+        batchId: request.batchId,
+        clientOptions: request.clientOptions(),
+        providerOptions: request.providerOptions(),
+      }),
+    );
+
+    const fileIds = [batch.outputFileId, batch.errorFileId].filter((id): id is string => id !== null);
+    const items: BatchResultItem[] = [];
+
+    for (const fileId of fileIds) {
+      const bytes = await this.downloadFile(
+        new DownloadFileRequest({
+          providerKey: request.providerKey(),
+          fileId,
+          clientOptions: request.clientOptions(),
+        }),
+      );
+
+      items.push(...parseBatchResults(new TextDecoder().decode(bytes)));
+    }
+
+    return items;
+  }
+
+  /**
+   * One round trip for every file and batch operation that answers with JSON.
    *
    * They go through the BINARY transport rather than the JSON one, even though
    * their replies are JSON, because upload sends multipart and only that
-   * transport carries a form. Routing the four together keeps their headers,
-   * error mapping and url building decided once — the alternative was upload on
-   * one transport and its three siblings on another, which is how two paths
-   * that should agree stop agreeing.
+   * transport carries a form. Routing them together keeps their headers, error
+   * mapping and url building decided once — the alternative was upload on one
+   * transport and its siblings on another, which is how two paths that should
+   * agree stop agreeing.
+   *
+   * Batch joined them rather than growing a second copy: it has the same
+   * `error`-inside-a-200 behaviour, and creating a batch uploads a file.
    */
   async #file(
     method: string,
     path: string,
     clientOptions: Readonly<Record<string, unknown>>,
     multipart?: MultipartBody,
+    jsonBody?: JsonObject,
   ): Promise<unknown> {
     const response = await this.#binaryTransport({
       url: `${this.url.replace(/\/+$/, '')}/${path}`,
       method,
       headers: this.headers(),
-      body: '',
+      body: jsonBody === undefined ? '' : canonicalJson(jsonBody),
       ...(multipart === undefined ? {} : { multipart }),
       clientOptions,
     });

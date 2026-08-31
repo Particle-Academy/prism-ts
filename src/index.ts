@@ -150,3 +150,32 @@ export {
   parseFileData,
   parseFileListResponse,
 } from './providers/openai/files.js';
+
+export { BatchPendingRequest } from './batch/pending-request.js';
+export {
+  BatchJob,
+  BatchJobRequestCounts,
+  BatchListResult,
+  BatchResultItem,
+  BatchResultStatus,
+  BatchStatus,
+} from './batch/batch-job.js';
+export type { BatchJobError } from './batch/batch-job.js';
+export {
+  BatchRequest,
+  BatchRequestItem,
+  CancelBatchRequest,
+  GetBatchResultsRequest,
+  ListBatchesRequest,
+  RetrieveBatchRequest,
+} from './batch/request.js';
+export {
+  batchStatusFromValue,
+  buildBatchBody,
+  buildBatchInputFile,
+  buildBatchListQuery,
+  parseBatchJob,
+  parseBatchListResponse,
+  parseBatchResultItem,
+  parseBatchResults,
+} from './providers/openai/batch.js';

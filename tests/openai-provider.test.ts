@@ -150,17 +150,18 @@ describe('OpenAI provider', () => {
   it('throws with a code for every capability it does not implement', () => {
     const provider = new OpenAI({ apiKey: 'sk-test' });
 
-    // `structured` left this list when the capability shipped. It is asserted
-    // by StructuredTest instead, which is the point of listing them by name
-    // rather than reflecting over the class: implementing one has to be a
-    // deliberate edit here.
-    for (const capability of ['fim', 'batch'] as const) {
-      try {
-        provider[capability](undefined);
-        expect.unreachable('should have thrown');
-      } catch (error) {
-        expect((error as PrismError).code).toBe('unsupported_provider_action');
-      }
+    // `structured` left this list when the capability shipped, and `batch` and
+    // `files` left it in turn. That is the point of listing them by name rather
+    // than reflecting over the class: implementing one has to be a deliberate
+    // edit here.
+    //
+    // `fim` is the only one left, and it is blocked on Mistral rather than
+    // pending — see G-14 in the port gaps register.
+    try {
+      provider.fim(undefined);
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect((error as PrismError).code).toBe('unsupported_provider_action');
     }
   });
 });

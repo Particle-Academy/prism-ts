@@ -1,3 +1,4 @@
+import { BatchPendingRequest } from './batch/pending-request.js';
 import { TextPendingRequest } from './text/pending-request.js';
 import { EmbeddingsPendingRequest } from './embeddings/pending-request.js';
 import { AudioPendingRequest } from './audio/pending-request.js';
@@ -74,5 +75,13 @@ export class Prism {
 
   static files(): FilesPendingRequest {
     return new Prism().files();
+  }
+
+  batch(): BatchPendingRequest {
+    return new BatchPendingRequest();
+  }
+
+  static batch(): BatchPendingRequest {
+    return new Prism().batch();
   }
 }

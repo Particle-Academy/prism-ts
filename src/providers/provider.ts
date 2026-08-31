@@ -14,6 +14,14 @@ import type {
   UploadFileRequest,
 } from '../files/request.js';
 import type { DeleteFileResult, FileData, FileListResult } from '../files/file-data.js';
+import type {
+  BatchRequest,
+  CancelBatchRequest,
+  GetBatchResultsRequest,
+  ListBatchesRequest,
+  RetrieveBatchRequest,
+} from '../batch/request.js';
+import type { BatchJob, BatchListResult, BatchResultItem } from '../batch/batch-job.js';
 import type { ModerationResponse } from '../moderation/response.js';
 import type { ImagesResponse } from '../images/response.js';
 import type { EmbeddingsResponse } from '../embeddings/response.js';
@@ -72,8 +80,24 @@ export abstract class Provider {
     throw PrismError.unsupportedProviderAction('fim', this.providerName);
   }
 
-  batch(_request: unknown): never {
+  batch(_request: BatchRequest): Promise<BatchJob> {
     throw PrismError.unsupportedProviderAction('batch', this.providerName);
+  }
+
+  retrieveBatch(_request: RetrieveBatchRequest): Promise<BatchJob> {
+    throw PrismError.unsupportedProviderAction('retrieveBatch', this.providerName);
+  }
+
+  listBatches(_request: ListBatchesRequest): Promise<BatchListResult> {
+    throw PrismError.unsupportedProviderAction('listBatches', this.providerName);
+  }
+
+  getBatchResults(_request: GetBatchResultsRequest): Promise<readonly BatchResultItem[]> {
+    throw PrismError.unsupportedProviderAction('getBatchResults', this.providerName);
+  }
+
+  cancelBatch(_request: CancelBatchRequest): Promise<BatchJob> {
+    throw PrismError.unsupportedProviderAction('cancelBatch', this.providerName);
   }
 
   uploadFile(_request: UploadFileRequest): Promise<FileData> {
