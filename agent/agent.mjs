@@ -8,6 +8,7 @@
 // Zero runtime dependencies, like the package it lives in.
 
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,33 @@ import { Prism, registeredProviders } from '../dist/index.js';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+const AGENT_SOURCE = resolve(ROOT, 'agent/agent.mjs');
+
+/**
+ * A digest of this file, taken when the process STARTED.
+ *
+ * The running server is the one thing a test over the source cannot check. A
+ * server started before a tool was added keeps serving the old list, the only
+ * consumer is a Lab screen that reports what it is told, and the staleness is
+ * invisible from both ends — which is precisely what happened, twice, on both
+ * ports. See the port gaps register, G-12.
+ *
+ * Comparing this against the file on disk lets the agent answer "am I running
+ * the code that is checked out?" itself, rather than leaving someone to notice.
+ * It covers the agent module and nothing else, which is the whole surface that
+ * can go stale: every other tool reads the port from disk or spawns a child
+ * process at call time, so they are current by construction.
+ */
+export const LOADED_DIGEST = digestOf(AGENT_SOURCE);
+
+export function digestOf(path) {
+  try {
+    return createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 12);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Load KEY=value pairs from a .env, without a dependency.
@@ -218,6 +246,11 @@ export const tools = {
         // Named, never returned. Whether a key EXISTS is a status question;
         // what it is never is.
         can_reason: Boolean(process.env[apiKeyVar()]),
+        agent_source_digest: LOADED_DIGEST,
+        // TRUE means this process is running code that is no longer on disk and
+        // its tool list may be wrong. Restart it before believing anything else
+        // here.
+        agent_stale: LOADED_DIGEST !== null && LOADED_DIGEST !== digestOf(AGENT_SOURCE),
       };
     },
   },

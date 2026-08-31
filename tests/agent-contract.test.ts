@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { tools } from '../agent/agent.mjs';
+import { resolve } from 'node:path';
+import { LOADED_DIGEST, digestOf, tools } from '../agent/agent.mjs';
 
 /**
  * The tools this port's agent exposes.
@@ -60,6 +61,26 @@ describe('agent contract', () => {
       'text',
     ]);
     expect(described.providers_implemented).toEqual(['anthropic', 'openai']);
+  });
+
+  it('reports whether this process is running the code on disk', async () => {
+    // G-12. The running server is the one thing a test over the source cannot
+    // check: a server started before a tool was added keeps serving the old
+    // list, and the only consumer is a Lab screen that reports what it is told.
+    // This is the agent answering the question itself.
+    const reported = await tools.status.handler({});
+
+    expect(reported.agent_source_digest).toBeTruthy();
+    expect(reported.agent_stale).toBe(false);
+  });
+
+  it('computes a digest that actually changes with the file', () => {
+    // Otherwise `agent_stale` is a field that always says "fine". A const
+    // module binding cannot be reassigned from here, so the comparison is
+    // proven through the function it uses.
+    expect(digestOf(resolve(import.meta.dirname, '../agent/agent.mjs'))).toBe(LOADED_DIGEST);
+    expect(digestOf(resolve(import.meta.dirname, '../agent/server.mjs'))).not.toBe(LOADED_DIGEST);
+    expect(digestOf(resolve(import.meta.dirname, '../agent/nope.mjs'))).toBeNull();
   });
 
   it('separates entry points from provider operations', async () => {
