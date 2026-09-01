@@ -11,8 +11,8 @@ import { LOADED_DIGEST, digestOf, loadedDigest, tools } from '../agent/agent.mjs
  * how the missing `benchmark` tool stayed invisible until someone screenshotted
  * a preflight failure. See the port gaps register, G-10 and G-11.
  *
- * It earned its place on the first run. The source defines SIX tools; a live
- * probe of the running agent on 2026-08-31 returned five — the server had been
+ * It earned its place on the first run. The source defined SIX tools then; a
+ * live probe of the running agent on 2026-08-31 returned five — the server had been
  * started from an older build and nobody could tell, because the only thing
  * asking it was a Lab screen that reports what it is told. A test over the
  * source cannot catch a stale process, but it does establish which list is the
@@ -23,6 +23,7 @@ describe('agent contract', () => {
     expect(Object.keys(tools).sort()).toEqual([
       'consensus',
       'describe_port',
+      'ecosystem_probe',
       'explain',
       'harness_probe',
       'run_conformance',
@@ -43,6 +44,32 @@ describe('agent contract', () => {
     // The address all three languages share. If this drifts, a PHP app and this
     // port stop resolving the same session and nothing else reports it.
     expect(report.session_key).toBe('session:23bd5c8949f6:7:probe');
+  }, 20_000);
+
+  it('proves the six satellite ports work from OUTSIDE their repos', async () => {
+    // The same claim the harness probe makes, for the other six families. Every
+    // check asks for the SECURITY property rather than the happy path, because
+    // a probe that only showed a guard letting good input through would pass
+    // equally well against a guard that lets everything through.
+    const report = await tools.ecosystem_probe.handler();
+
+    expect(report.reason ?? null).toBe(null);
+    expect(report.families.map((family: { family: string }) => family.family)).toEqual([
+      'perplexity',
+      'opentelemetry',
+      'memory',
+      'mcp',
+      'browser',
+      'human-plus',
+    ]);
+
+    const failed = report.families.flatMap(
+      (family: { family: string; checks: { step: string; ok: boolean }[] }) =>
+        family.checks.filter((check) => !check.ok).map((check) => `${family.family}: ${check.step}`),
+    );
+
+    expect(failed).toEqual([]);
+    expect(report.ok).toBe(true);
   }, 20_000);
 
   it('does not yet expose benchmark, and that is a tracked gap', () => {
