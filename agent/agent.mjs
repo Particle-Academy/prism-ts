@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 
 import { Prism, registeredProviders } from '../dist/index.js';
 import { probeHarness } from './harness-probe.mjs';
+import { probeEcosystem } from './ecosystem-probe.mjs';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -393,6 +394,20 @@ export const tools = {
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async handler() {
       return probeHarness();
+    },
+  },
+
+  ecosystem_probe: {
+    description:
+      'Exercise the six satellite ports — perplexity, opentelemetry, memory, mcp, browser, ' +
+      'human-plus — end to end from OUTSIDE their repos, asking each for its SECURITY property ' +
+      'rather than its happy path: content capture off by default, a pin that breaks when a tool ' +
+      'description is swapped, the cloud metadata endpoint refused even when allow-listed, an ' +
+      'attachment another owner cannot reach. Free, deterministic and network-free — every seam ' +
+      'these packages expose for a network is injected. Safe to poll.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async handler() {
+      return probeEcosystem();
     },
   },
 
