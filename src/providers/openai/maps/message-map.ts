@@ -4,6 +4,7 @@ import { PrismError } from '../../../errors.js';
 import type { AssistantMessage, Message, SystemMessage, ToolResultMessage } from '../../../value-objects/messages/index.js';
 import type { ToolCall } from '../../../value-objects/tool-call.js';
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
+import { mapDocument, mapImage } from './media-map.js';
 
 /**
  * Map messages onto the Responses API's flat `input` array.
@@ -36,7 +37,11 @@ export function mapMessages(
       case 'user':
         items.push({
           role: 'user',
-          content: [{ type: 'input_text', text: message.text() }],
+          content: [
+            { type: 'input_text', text: message.text() },
+            ...message.images().map(mapImage),
+            ...message.documents().map(mapDocument),
+          ],
           // Spread at ITEM level: siblings of `role` and `content`, not nested.
           ...message.additionalAttributes,
         });

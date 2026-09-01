@@ -3,6 +3,7 @@ import { canonicalJson, isJsonObject } from '../../../json.js';
 import { PrismError } from '../../../errors.js';
 import type { AssistantMessage, Message, SystemMessage, ToolResultMessage } from '../../../value-objects/messages/index.js';
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
+import { mapDocument, mapImage } from './media-map.js';
 
 /**
  * Map messages onto Anthropic's `messages` array.
@@ -36,7 +37,11 @@ export function mapMessages(messages: readonly Message[]): JsonValue[] {
       case 'user':
         items.push({
           role: 'user',
-          content: [{ type: 'text', text: message.text() }],
+          content: [
+            { type: 'text', text: message.text() },
+            ...message.images().map(mapImage),
+            ...message.documents().map(mapDocument),
+          ],
           ...message.additionalAttributes,
         });
         break;

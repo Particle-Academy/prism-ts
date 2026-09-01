@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -318,8 +318,18 @@ export const tools = {
       // Facts, from disk. The agent was confidently wrong about a provider it
       // had never had, because nothing let it check — it reasoned from the
       // question it was asked instead of from the port it lives in.
-      const providers = await readdir(resolve(ROOT, 'src/providers'), { withFileTypes: true })
-        .then(entries => entries.filter(e => e.isDirectory()).map(e => e.name).sort())
+      //
+      // Read from the REGISTRY, which is what `using()` actually consults, and
+      // not from the directory names under `src/providers`. Those were the
+      // first answer and they were wrong for the same reason the original bug
+      // was: a directory is a filename, and a filename is a guess. The moment a
+      // shared, non-provider directory appeared beside the three real ones
+      // (`support/`, holding the data-uri encoder two providers use), this
+      // reported FOUR providers and named one that cannot be passed to
+      // `using()`. `status` was already right — it reads `registeredProviders()`
+      // — so the same process answered the same question two ways.
+      const providers = await readFile(resolve(ROOT, 'src/providers/registry.ts'), 'utf8')
+        .then(source => [...source.matchAll(/^ {2}\['([\w-]+)',/gm)].map(match => match[1]).sort())
         .catch(() => []);
 
       const exports = await readFile(resolve(ROOT, 'src/index.ts'), 'utf8')

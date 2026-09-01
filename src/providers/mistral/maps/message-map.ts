@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from '../../../json.js';
 import { PrismError } from '../../../errors.js';
 import type { AssistantMessage, Message, SystemMessage, UserMessage } from '../../../value-objects/messages/index.js';
+import { mapDocument, mapImage } from './media-map.js';
 
 /**
  * Map messages onto Mistral's chat-completions shape.
@@ -55,14 +56,18 @@ function mapMessage(message: Message): JsonObject[] {
  * later does not change the shape of every other message in a transcript — so a
  * stored conversation stays comparable with itself.
  *
- * IMAGE AND DOCUMENT PARTS ARE NOT MAPPED, because this port's `UserMessage`
- * carries text parts and nothing else. The reference maps `image_url` and
- * `document_url` here; adding them without the message types to feed them would
- * be a branch nothing can reach. Recorded in the port gaps register rather than
- * stubbed.
+ * Text leads, then images, then documents — the reference's order. Mistral does
+ * not document an ordering requirement, but the parts reach the model in the
+ * order they are sent, so keeping it identical to the reference means a
+ * transcript compared across the two ports and the reference matches byte for
+ * byte rather than only semantically.
  */
 function mapUserMessage(message: UserMessage): JsonObject {
-  const content: JsonValue[] = [{ type: 'text', text: message.text() }];
+  const content: JsonValue[] = [
+    { type: 'text', text: message.text() },
+    ...message.images().map(mapImage),
+    ...message.documents().map(mapDocument),
+  ];
 
   return { role: 'user', content, ...message.additionalAttributes };
 }

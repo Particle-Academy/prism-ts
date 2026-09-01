@@ -3,6 +3,9 @@ import { extname } from 'node:path';
 import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
 
+/** The kinds of payload a message part can be, minus text. */
+export type MediaKind = 'image' | 'audio' | 'document' | 'video';
+
 /**
  * A binary payload, however it was given to us.
  *
@@ -29,6 +32,20 @@ import { PrismError } from '../../errors.js';
  *    replaying threads.
  */
 export abstract class Media {
+  /**
+   * The discriminator in the serialized form, under the key `kind`.
+   *
+   * NOT `type`. `GeneratedAudio` already serializes `type` as the provider's
+   * own format name (`mp3`, `wav`), so a discriminator spelled `type` would be
+   * overwritten by it on exactly one subclass — the kind of collision that
+   * round-trips fine in every test that does not happen to use that class.
+   *
+   * A subclass of a subclass keeps its parent's kind: `GeneratedImage` is an
+   * `image`, and reading one back as `Image` loses only the revised prompt,
+   * which is not something a user message carries.
+   */
+  abstract readonly kind: MediaKind;
+
   #base64: string | null;
 
   #mimeType: string | null;
@@ -226,14 +243,57 @@ export abstract class Media {
     return this;
   }
 
+  /**
+   * The serialized form.
+   *
+   * `base64()`, not the base64 FIELD: a payload built from raw content or from
+   * a local file has bytes and an empty `#base64` until something asks for it,
+   * so reading the field would serialize a full image as `base64: null` and the
+   * round trip would silently return an empty one. Encoding here costs one pass
+   * over bytes the caller has already decided to persist.
+   */
   toObject(): JsonObject {
     return {
+      kind: this.kind,
       url: this.url,
-      base64: this.#base64,
+      base64: this.base64(),
       mime_type: this.#mimeType,
       file_id: this.#fileId,
       filename: this.#filename,
     };
+  }
+
+  /**
+   * Put a serialized payload's fields back on a fresh instance.
+   *
+   * Protected and static so each subclass's own `fromObject` can call it
+   * without every one of them restating the five keys — and without the
+   * setters becoming public, which would make a value object mutable from
+   * anywhere for the sake of one code path.
+   *
+   * The local path is NOT restored: it names a file on the machine that
+   * serialized this, and a path that resolves to a different file elsewhere is
+   * worse than no path at all. The bytes travel as base64 instead.
+   */
+  protected static restoreInto<T extends Media>(media: T, object: JsonObject): T {
+    if (typeof object.file_id === 'string') {
+      media.setFileId(object.file_id);
+    }
+
+    if (typeof object.filename === 'string') {
+      media.as(object.filename);
+    }
+
+    return media;
+  }
+
+  /** The url, base64 and mime type a serialized payload carries, as constructor arguments. */
+  protected static constructorArgs(object: JsonObject): [string | null, string | null, string | null] {
+    return [
+      typeof object.url === 'string' ? object.url : null,
+      typeof object.base64 === 'string' ? object.base64 : null,
+      typeof object.mime_type === 'string' ? object.mime_type : null,
+    ];
   }
 
   protected setRawContent(content: Uint8Array, mimeType: string | null): void {

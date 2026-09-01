@@ -14,14 +14,29 @@ wire, and what comes back, is identical.
 
 ## Scope
 
-This package is one **vertical slice**, deliberately: the entry point, the
-pending-request builder, the provider contract, the OpenAI provider against its
-**Responses API**, and the text capability with its message value objects.
+**Every capability the reference has**, and three of its eighteen providers.
+That is the shape of the remaining drift: one axis, not two.
 
-Not included, and not stubbed: streaming, structured output, embeddings, images,
-audio, moderation, batches, files, the tool-execution loop, the OpenAI
-chat-completions format, and every other provider. Asking for one fails with the
-`unsupported_provider_action` code rather than returning something plausible.
+- **Capabilities — all of them.** `text`, `structured`, `stream`, `embeddings`,
+  `images`, `moderation`, `audio` (`textToSpeech` and `speechToText`), `files`,
+  `batch`, `fim`. A user message carries images and documents, and each provider
+  spells them its own way.
+- **Providers — `anthropic`, `mistral`, `openai`.** The OpenAI provider speaks
+  the **Responses API**; Mistral brings the chat-completions shape, which is a
+  different wire format rather than a variant of it.
+
+Not included, and not stubbed: **the tool-execution loop** — a response that
+finishes on tool calls is refused with `tool_loop_not_supported` rather than
+half-executed — and the fifteen providers the reference has and this port does
+not. Asking for one fails with the `unsupported_provider_action` code rather
+than returning something plausible.
+
+Not every capability reaches every provider, because not every provider has one.
+`images`, `moderation`, `textToSpeech`, `files` and `batch` are OpenAI-only
+here, and `fim` is Mistral-only because Mistral is the only provider that
+implements it at all — in the reference as well. See the envelope's port gaps
+register for which of those are work someone could do and which are facts about
+the provider.
 
 Every value object serialises **and rebuilds** — `toObject()` and a static
 `fromObject()`. The PHP package has only the first half, which left each consumer

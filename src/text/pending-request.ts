@@ -7,7 +7,7 @@ import { resolveProvider } from '../providers/registry.js';
 import { SystemMessage } from '../value-objects/messages/index.js';
 import type { Message } from '../value-objects/messages/index.js';
 import { UserMessage } from '../value-objects/messages/index.js';
-import type { Text } from '../value-objects/media/text.js';
+import type { MessagePart } from '../value-objects/media/part.js';
 import type { ProviderTool } from '../value-objects/provider-tool.js';
 import { TextRequest, type TextRequestOptions } from './request.js';
 import type { TextResponse } from './response.js';
@@ -33,7 +33,7 @@ export class TextPendingRequest {
 
   #prompt: string | null = null;
 
-  #additionalContent: readonly Text[] = [];
+  #additionalContent: readonly MessagePart[] = [];
 
   #systemPrompts: SystemMessage[] = [];
 
@@ -69,7 +69,14 @@ export class TextPendingRequest {
     return this;
   }
 
-  withPrompt(prompt: string, additionalContent: readonly Text[] = []): this {
+  /**
+   * The single user turn this request asks about.
+   *
+   * `additionalContent` takes any message PART, not only text — an `Image` or a
+   * `Document` passed here reaches whichever provider the request resolves to,
+   * in that provider's own spelling.
+   */
+  withPrompt(prompt: string, additionalContent: readonly MessagePart[] = []): this {
     this.#prompt = prompt;
     this.#additionalContent = additionalContent;
 

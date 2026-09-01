@@ -116,10 +116,13 @@ export { ModerationResult } from './value-objects/moderation-result.js';
 export { buildModerationBody, parseModerationResponse } from './providers/openai/moderation.js';
 
 export { Media, guessMimeType } from './value-objects/media/media.js';
+export type { MediaKind } from './value-objects/media/media.js';
 export { Image } from './value-objects/media/image.js';
 export { Audio } from './value-objects/media/audio.js';
 export { Document } from './value-objects/media/document.js';
 export { Video } from './value-objects/media/video.js';
+export { partFromObject } from './value-objects/media/part.js';
+export type { MessagePart } from './value-objects/media/part.js';
 
 export { AudioPendingRequest } from './audio/pending-request.js';
 export { SpeechToTextRequest, TextToSpeechRequest } from './audio/request.js';

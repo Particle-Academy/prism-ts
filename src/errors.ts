@@ -41,6 +41,8 @@ export type PrismErrorCode =
   | 'unreadable_media_file'
   /** A media payload could not be fetched from its url. */
   | 'unfetchable_media'
+  /** A provider was handed a media part in a form it cannot send. */
+  | 'unsupported_media'
   /** An audio terminal was called with the input for the other direction. */
   | 'wrong_audio_input'
   /** A speech-to-text input carries no bytes to send. */
@@ -131,6 +133,21 @@ export class PrismError extends Error {
 
   static unreadableMediaFile(path: string, cause?: unknown): PrismError {
     return new PrismError('unreadable_media_file', `Could not read the media file [${path}].`, { cause });
+  }
+
+  /**
+   * Names the provider, the part, and WHAT IT WOULD ACCEPT.
+   *
+   * The reference says only that the provider "does not support the mediums
+   * available" and points at the docs. The form a payload is in is the whole
+   * question here — a url where bytes were needed, or the reverse — so the
+   * accepted forms belong in the message rather than a page away.
+   */
+  static unsupportedMedia(provider: string, part: string, accepts: string): PrismError {
+    return new PrismError(
+      'unsupported_media',
+      `${provider} cannot send this ${part}: it accepts ${accepts}.`,
+    );
   }
 
   static unfetchableMedia(reason: string): PrismError {
