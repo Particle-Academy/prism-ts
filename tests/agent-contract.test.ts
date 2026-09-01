@@ -24,11 +24,26 @@ describe('agent contract', () => {
       'consensus',
       'describe_port',
       'explain',
+      'harness_probe',
       'run_conformance',
       'run_tests',
       'status',
     ]);
   });
+
+  it('proves the harness port works from OUTSIDE its own repo', async () => {
+    // The harness's own suite proves its pieces. This proves the assembled
+    // package works in a process that did not write it — which is the claim a
+    // consumer actually depends on, and a different one.
+    const report = await tools.harness_probe.handler();
+
+    expect(report.ok).toBe(true);
+    expect(report.steps.filter((step: { ok: boolean }) => !step.ok)).toEqual([]);
+
+    // The address all three languages share. If this drifts, a PHP app and this
+    // port stop resolving the same session and nothing else reports it.
+    expect(report.session_key).toBe('session:23bd5c8949f6:7:probe');
+  }, 20_000);
 
   it('does not yet expose benchmark, and that is a tracked gap', () => {
     // G-10. Deliberately asserted rather than left absent: when a lane-execution

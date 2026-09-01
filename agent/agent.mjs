@@ -16,6 +16,7 @@ import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { Prism, registeredProviders } from '../dist/index.js';
+import { probeHarness } from './harness-probe.mjs';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -380,6 +381,18 @@ export const tools = {
           'purpose: it is Mistral-only in the reference and no port has Mistral (port gaps ' +
           'register, G-14).',
       };
+    },
+  },
+
+  harness_probe: {
+    description:
+      'Exercise prism-harness-ts end to end against a real disk: the volatile-durable guard, a ' +
+      'PHP-compatible session key, an approval that stops a run, and the resume that runs the ' +
+      'tool once a human answers. Free and deterministic -- the model is scripted, because what ' +
+      'is under test is the session and the thread, not a provider. Safe to poll.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async handler() {
+      return probeHarness();
     },
   },
 
