@@ -273,14 +273,33 @@ export function runSuite({ lib, suite, probe = 'faithful', language = LANGUAGE }
  * @returns {ReportDocument[]}
  */
 export function runCorpus({ lib, corpus, suiteIds, probe = 'faithful', language = LANGUAGE }) {
-  return (suiteIds ?? corpus.suiteIds()).map((suiteId) => ({
-    corpus_version: corpus.version,
-    corpus_digest: corpus.digest(),
-    language,
-    suite: suiteId,
-    probe,
-    results: runSuite({ lib, suite: corpus.suite(suiteId), probe, language }),
-  }));
+  return (suiteIds ?? corpus.suiteIds())
+    .filter((suiteId) => {
+      // A `security-corpus` suite is not run from here, and reporting nothing
+      // for it is correct rather than a gap. Those suites have no `expect`:
+      // each row records what every language PRODUCED, per language, and the
+      // comparison lives in the family's own three repositories (e.g.
+      // `prism-memory-ts/test/vector-storage-corpus.test.ts` and its two
+      // siblings), where the code under test actually is. This runner drives
+      // the port through the five golden-based kinds and nothing else.
+      //
+      // Named on stderr rather than skipped silently, for the same reason the
+      // reference runner names it: a suite whose kind is a typo would otherwise
+      // be run by nothing at all and report as fine.
+      if (corpus.suite(suiteId).manifest.kind !== 'security-corpus') return true;
+
+      process.stderr.write(`${suiteId}: security-corpus, run in the family's own repos — not from here.\n`);
+
+      return false;
+    })
+    .map((suiteId) => ({
+      corpus_version: corpus.version,
+      corpus_digest: corpus.digest(),
+      language,
+      suite: suiteId,
+      probe,
+      results: runSuite({ lib, suite: corpus.suite(suiteId), probe, language }),
+    }));
 }
 
 /**

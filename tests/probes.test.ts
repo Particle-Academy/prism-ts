@@ -90,7 +90,22 @@ function difference(expected: string[], observed: string[]): { missing: string[]
 
 describe('the corpus itself', () => {
   it('ships the suites and probes this runner was built against', () => {
-    expect(corpus.suiteIds()).toEqual([
+    // The suites this runner RUNS, which is not every suite the corpus ships.
+    // A `security-corpus` suite has no `expect` — each row records what every
+    // language produced, per language — so it is run in the family's own three
+    // repositories rather than from here, and the runner skips it by kind.
+    //
+    // Filtered rather than listed, deliberately. A hardcoded list goes stale
+    // every time the corpus grows a suite this runner was never meant to touch,
+    // and the stale failure teaches you to widen the list rather than to look.
+    // Filtering by kind keeps the assertion pointed at the real hazard: a NEW
+    // golden-based suite appearing that nobody taught this runner about still
+    // fails here.
+    const runnable = corpus
+      .suiteIds()
+      .filter((id) => corpus.suite(id).manifest.kind !== 'security-corpus');
+
+    expect(runnable).toEqual([
       'json-container-identity',
       'openai-text-request',
       'openai-text-response',
