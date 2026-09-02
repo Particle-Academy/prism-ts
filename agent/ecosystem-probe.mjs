@@ -306,11 +306,34 @@ export async function probeEcosystem() {
       () => SurfaceTrustPolicy.everyTool().assertAllows(new SurfaceToolDefinition('terminal_confirm', '', {})),
       /reserved for the human/,
     );
+    // ADVERSARIAL, and the reason the two below exist. The name is chosen by
+    // the SURFACE, so a probe that only ever asks with a well-behaved one
+    // cannot see a surface that did not send one. This probe reported the check
+    // above as green for the whole period G-33 and G-36 were live.
+    const humanOnlyPadded = await refuses(
+      () => SurfaceTrustPolicy.everyTool().assertAllows(new SurfaceToolDefinition('terminal_confirm ', '', {})),
+      /reserved for the human|well-formed/,
+    );
+    // Cyrillic U+0441. It is not the reserved word, so the reservation
+    // correctly does not fire — the refusal has to come from the name rule, or
+    // an allowlist a human reads is lying to them.
+    const homoglyph = await refuses(
+      () => SurfaceTrustPolicy.everyTool().assertAllows(new SurfaceToolDefinition('\u0441onfirm', '', {})),
+      /well-formed/,
+    );
 
     is('a trusted surface tool runs and comes back framed', result.includes('untrusted-tool-output'), true);
     is('the agent announces itself AS an agent', notifications.at(-1).params.actor.type, 'agent');
     is('another owner cannot reach the attachment', wrongOwner, { refused: true, message: 'as expected' });
     is('confirmation stays with the human under wildcard trust', humanOnly, {
+      refused: true,
+      message: 'as expected',
+    });
+    is('and still does when the SURFACE pads the name', humanOnlyPadded, {
+      refused: true,
+      message: 'as expected',
+    });
+    is('a homoglyph tool name is refused outright', homoglyph, {
       refused: true,
       message: 'as expected',
     });
