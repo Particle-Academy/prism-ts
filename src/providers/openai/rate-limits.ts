@@ -1,4 +1,5 @@
 import { ProviderRateLimit } from '../../value-objects/provider-rate-limit.js';
+import { foldHeaderNames } from '../../http/header-names.js';
 
 const BUCKETS = ['requests', 'tokens'] as const;
 
@@ -6,9 +7,14 @@ const BUCKETS = ['requests', 'tokens'] as const;
 export function parseRateLimits(headers: Readonly<Record<string, string>>): ProviderRateLimit[] {
   const rateLimits: ProviderRateLimit[] = [];
 
+  // Folded first: HTTP field names are case-insensitive (RFC 9110 §5.1) and
+  // these are exact key lookups, so a title-casing gateway used to erase every
+  // rate limit here without a word.
+  const found = foldHeaderNames(headers);
+
   for (const bucket of BUCKETS) {
-    const limit = headers[`x-ratelimit-limit-${bucket}`];
-    const remaining = headers[`x-ratelimit-remaining-${bucket}`];
+    const limit = found[`x-ratelimit-limit-${bucket}`];
+    const remaining = found[`x-ratelimit-remaining-${bucket}`];
 
     if (limit === undefined || remaining === undefined) {
       continue;
@@ -19,7 +25,7 @@ export function parseRateLimits(headers: Readonly<Record<string, string>>): Prov
         bucket,
         toInteger(limit),
         toInteger(remaining),
-        parseResetTime(headers[`x-ratelimit-reset-${bucket}`]),
+        parseResetTime(found[`x-ratelimit-reset-${bucket}`]),
       ),
     );
   }

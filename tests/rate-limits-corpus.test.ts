@@ -14,11 +14,16 @@ import { parseRateLimits as openaiLimits } from '../src/providers/openai/rate-li
  * language throttles on a bucket the other cannot see, or retries into a limit
  * it believes has lifted.
  *
- * **This port disagrees with the reference on nine of the sixteen rows**, and
- * the corpus records every one. They are pinned here rather than silently
- * closed: three of them are outright defects in this port (see the `it` blocks
- * below), and a fix has to update the corpus in the same breath, which is the
- * only thing that makes the fix visible to the other two languages.
+ * **This port disagreed with the reference on nine of the sixteen rows on the
+ * suite's first run, and on five now.** They are pinned here rather than
+ * silently closed: a fix has to update the corpus in the same breath, which is
+ * the only thing that makes the fix visible to the other two languages.
+ *
+ * Two of the four that closed were this port's own defects — it read Mistral's
+ * headers under names Mistral does not send (G-41), and it matched its prefix
+ * case-sensitively against field names HTTP defines as case-insensitive (G-43).
+ * The five that remain are one defect with five faces: this port ENUMERATES
+ * Anthropic's buckets where the reference DISCOVERS them (G-42).
  *
  * Mirrors prism-py/tests/test_provider_rate_limits_corpus.py case for case.
  */
@@ -101,22 +106,36 @@ describe('the cross-language provider-rate-limits corpus', () => {
       'prl-0003',
       'prl-0004',
       'prl-0005',
-      'prl-0006',
-      'prl-0008',
-      'prl-0014',
       'prl-0015',
       'prl-0016',
     ]);
   });
 
-  it('returns nothing at all for a real Mistral response', () => {
-    // The largest single divergence. Mistral sends `ratelimitbysize-limit` with
-    // NO bucket segment — the spelling the reference reads and its own tests
-    // assert against — while this port reads `ratelimitbysize-limit-tokens`. The
-    // result is an empty list, which is indistinguishable from a provider that
-    // sent no quota headers at all.
-    expect(caseOf('prl-0014').result.ts).toEqual({ outcome: 'ok', buckets: [] });
-    expect(caseOf('prl-0014').result.php?.buckets).toHaveLength(1);
+  it('reads a real Mistral response, under the names the service sends', () => {
+    // G-41, CLOSED. Mistral sends `ratelimitbysize-limit` with NO bucket
+    // segment — the spelling the reference reads and its own tests assert
+    // against — and this port read `ratelimitbysize-limit-tokens`, so it
+    // returned an empty list for every Mistral call, indistinguishable from a
+    // provider that sent no quota headers at all.
+    expect(caseOf('prl-0014').result.ts).toEqual(caseOf('prl-0014').result.php);
+    expect(caseOf('prl-0014').result.ts?.buckets).toEqual([
+      {
+        name: 'tokens',
+        limit: 500_000,
+        remaining: 499_900,
+        resets_at: '2026-08-25T11:15:28+00:00',
+      },
+    ]);
+  });
+
+  it('reads quota through a title-casing gateway, which it used not to', () => {
+    // G-43, CLOSED in both references. HTTP field names are case-insensitive
+    // (RFC 9110 §5.1); this port and the reference both matched their prefix
+    // against the wire case, so one ordinary proxy made each report no rate
+    // limits at all — and an empty list is also what a response that carried
+    // none legitimately looks like. prism-py was deliberately alone here.
+    expect(caseOf('prl-0008').agrees).toBe(true);
+    expect(caseOf('prl-0008').result.ts?.buckets).toHaveLength(1);
   });
 
   it('cannot see a bucket it did not enumerate', () => {
@@ -149,10 +168,13 @@ describe('the cross-language provider-rate-limits corpus', () => {
     ]);
   });
 
-  it('keeps the response when a reset is unparseable, which the reference does not', () => {
-    // The one row where this port is safer than the reference: an unreadable
-    // reset costs the reset, not the already-paid-for completion.
+  it('keeps the response when a reset is unparseable, and so now does the reference', () => {
+    // This port was safer than the reference here: an unreadable reset costs
+    // the reset, not the already-paid-for completion. The reference RAISED on
+    // this row when the suite was first run and was fixed the same week, so
+    // all three languages now keep the response.
     expect(caseOf('prl-0006').result.ts?.outcome).toBe('ok');
-    expect(caseOf('prl-0006').result.php?.outcome).toBe('raised');
+    expect(caseOf('prl-0006').result.php?.outcome).toBe('ok');
+    expect(caseOf('prl-0006').agrees).toBe(true);
   });
 });

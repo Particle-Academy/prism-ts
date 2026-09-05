@@ -1,4 +1,5 @@
 import { ProviderRateLimit } from '../../value-objects/provider-rate-limit.js';
+import { foldHeaderNames } from '../../http/header-names.js';
 
 /**
  * Anthropic reports four buckets where OpenAI reports two, and the extra pair
@@ -11,9 +12,15 @@ const BUCKETS = ['requests', 'tokens', 'input-tokens', 'output-tokens'] as const
 export function parseRateLimits(headers: Readonly<Record<string, string>>): ProviderRateLimit[] {
   const rateLimits: ProviderRateLimit[] = [];
 
+  // Folded first: HTTP field names are case-insensitive (RFC 9110 §5.1) and
+  // these are exact key lookups, so an `Anthropic-RateLimit-…` from a
+  // title-casing gateway used to match nothing and return an empty array —
+  // which is also what a response with no quota headers looks like.
+  const found = foldHeaderNames(headers);
+
   for (const bucket of BUCKETS) {
-    const limit = headers[`anthropic-ratelimit-${bucket}-limit`];
-    const remaining = headers[`anthropic-ratelimit-${bucket}-remaining`];
+    const limit = found[`anthropic-ratelimit-${bucket}-limit`];
+    const remaining = found[`anthropic-ratelimit-${bucket}-remaining`];
 
     // Both or neither. A bucket with a limit and no remaining tells a caller
     // nothing actionable, and reporting it as zero remaining would be a lie.
@@ -26,7 +33,7 @@ export function parseRateLimits(headers: Readonly<Record<string, string>>): Prov
         bucket,
         toInteger(limit),
         toInteger(remaining),
-        parseResetTime(headers[`anthropic-ratelimit-${bucket}-reset`]),
+        parseResetTime(found[`anthropic-ratelimit-${bucket}-reset`]),
       ),
     );
   }

@@ -6,6 +6,8 @@
  * an application wrap every call in its own retry, proxy or instrumentation.
  */
 
+import { foldHeaderName } from './header-names.js';
+
 export interface HttpRequest {
   url: string;
   method: string;
@@ -41,7 +43,7 @@ export const fetchTransport: HttpTransport = async (request: HttpRequest): Promi
   const headers: Record<string, string> = {};
 
   response.headers.forEach((value, name) => {
-    headers[name.toLowerCase()] = value;
+    headers[foldHeaderName(name)] = value;
   });
 
   return {
@@ -100,7 +102,7 @@ export const fetchStreamTransport: HttpStreamTransport = async (
   const headers: Record<string, string> = {};
 
   response.headers.forEach((value, name) => {
-    headers[name.toLowerCase()] = value;
+    headers[foldHeaderName(name)] = value;
   });
 
   return { status: response.status, headers, chunks: readChunks(response) };
@@ -230,7 +232,7 @@ export const fetchBinaryTransport: HttpBinaryTransport = async (request): Promis
   const responseHeaders: Record<string, string> = {};
 
   response.headers.forEach((value, name) => {
-    responseHeaders[name.toLowerCase()] = value;
+    responseHeaders[foldHeaderName(name)] = value;
   });
 
   return {
