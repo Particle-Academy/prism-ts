@@ -1,4 +1,5 @@
 import { isJsonObject, type JsonObject } from '../../json.js';
+import { readNullableNumber } from '../../internal/filters.js';
 import { FinishReason } from '../../enums.js';
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
@@ -159,7 +160,19 @@ export class AnthropicStreamMapper {
     const tokens = readObject(payload.usage);
 
     if (tokens !== null) {
-      this.#usage = new Usage(this.#usage?.promptTokens ?? 0, readNumber(tokens.output_tokens));
+      // Rebuilt rather than mutated, so everything not restated here would be
+      // LOST. Prompt tokens were already carried forward for that reason; cache
+      // and thinking counts arrive at message_start and never again, so they
+      // need the same treatment.
+      this.#usage = new Usage(
+        this.#usage?.promptTokens ?? 0,
+        readNumber(tokens.output_tokens),
+        this.#usage?.cacheWriteInputTokens ?? null,
+        this.#usage?.cacheReadInputTokens ?? null,
+        readNullableNumber(readObject(tokens.output_tokens_details)?.thinking_tokens) ??
+          this.#usage?.thoughtTokens ??
+          null,
+      );
     }
   }
 
@@ -169,7 +182,17 @@ export class AnthropicStreamMapper {
 }
 
 function usage(raw: JsonObject | null): Usage | null {
-  return raw === null ? null : new Usage(readNumber(raw.input_tokens), readNumber(raw.output_tokens));
+  if (raw === null) {
+    return null;
+  }
+
+  return new Usage(
+    readNumber(raw.input_tokens),
+    readNumber(raw.output_tokens),
+    readNullableNumber(raw.cache_creation_input_tokens),
+    readNullableNumber(raw.cache_read_input_tokens),
+    readNullableNumber(readObject(raw.output_tokens_details)?.thinking_tokens),
+  );
 }
 
 function readObject(value: unknown): JsonObject | null {

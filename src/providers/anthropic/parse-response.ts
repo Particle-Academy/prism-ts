@@ -101,7 +101,12 @@ function buildStep(
       readNumber(usage.output_tokens, 0),
       readNullableNumber(usage.cache_creation_input_tokens),
       readNullableNumber(usage.cache_read_input_tokens),
-      null,
+      // Reasoning tokens, and a BREAKDOWN of output_tokens rather than an
+      // addition to them -- 1240 thinking inside 2820 output, not beside.
+      // Reported by the Moic Suite team against the live API; every Anthropic
+      // path in all three languages was leaving this null, so no cross-language
+      // check could see it. They agreed on something wrong.
+      readNullableNumber(readObject(usage.output_tokens_details)?.thinking_tokens),
     ),
     meta: new Meta(readString(data.id, ''), readString(data.model, ''), rateLimits, null),
     messages: request.messages(),

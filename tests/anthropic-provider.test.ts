@@ -145,6 +145,53 @@ describe('Anthropic provider', () => {
     expect(response.usage.cacheReadInputTokens).toBe(7);
   });
 
+  it('reports the thinking tokens Anthropic actually sends', async () => {
+    // Reported by the Moic Suite team against the live API. Anthropic puts
+    // reasoning at usage.output_tokens_details.thinking_tokens, and this
+    // mapping passed a literal null there -- as did PHP and Python. All three
+    // languages agreed, so no cross-language check could see it.
+    //
+    // The numbers matter as much as the field: 1240 thinking tokens INSIDE
+    // 2820 output tokens. A consumer pricing completion + thought would bill
+    // the reasoning twice, which is the expensive half.
+    const { transport } = recordingTransport({
+      body: {
+        ...OK_BODY,
+        usage: {
+          input_tokens: 11,
+          output_tokens: 2820,
+          output_tokens_details: { thinking_tokens: 1240 },
+        },
+      },
+    });
+
+    const response = await Prism.text()
+      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .withPrompt('Hi')
+      .asText();
+
+    expect(response.usage.thoughtTokens).toBe(1240);
+    expect(response.usage.completionTokens).toBe(2820);
+    // The breakdown claim, asserted rather than left to the comment.
+    expect(response.usage.thoughtTokens!).toBeLessThan(response.usage.completionTokens);
+  });
+
+  it('leaves thoughtTokens null when Anthropic reports no thinking', async () => {
+    // The control. Without it the test above passes against a mapping that
+    // hardcodes 1240, and against one that invents a number when none was sent
+    // -- which would make "the model did not reason" unreadable.
+    const { transport } = recordingTransport({
+      body: { ...OK_BODY, usage: { input_tokens: 11, output_tokens: 2820 } },
+    });
+
+    const response = await Prism.text()
+      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .withPrompt('Hi')
+      .asText();
+
+    expect(response.usage.thoughtTokens).toBeNull();
+  });
+
   it('raises on an error body even when the status is not a failure', async () => {
     // Anthropic reports some failures with type: "error" and a 200.
     const { transport } = recordingTransport({
