@@ -106,6 +106,11 @@ describe('the corpus itself', () => {
       .filter((id) => corpus.suite(id).manifest.kind !== 'security-corpus');
 
     expect(runnable).toEqual([
+      // Every row is SKIPPED for this language (G-49: Anthropic response
+      // citations are not ported), but the suite still has to be listed --
+      // this pin asserts what the corpus SHIPS, not what this runner passes.
+      // Dropping it here would hide a whole suite arriving unnoticed.
+      'anthropic-text-response',
       'json-container-identity',
       'openai-text-request',
       'openai-text-response',

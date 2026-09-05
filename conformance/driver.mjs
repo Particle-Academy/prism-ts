@@ -92,6 +92,31 @@ function hydrateTool(lib, spec) {
 }
 
 /** Replay a builder script against a fresh pending request. */
+/**
+ * The parser for the provider a case's builder names.
+ *
+ * Read from the SCRIPT rather than from the built request, so all three
+ * languages answer this the same way: a request object exposes its provider
+ * differently in each, and the script is the one shared artifact.
+ *
+ * This assumed OpenAI until 2026-09-05, which is the mechanical reason no
+ * Anthropic row could exist in the corpus -- and therefore why G-48, reasoning
+ * tokens dropped in all three languages, was invisible to every cross-language
+ * check that existed.
+ */
+function parseFor(lib, script) {
+  const provider = script.find((step) => step.call === 'using')?.args?.[0];
+
+  switch (provider) {
+    case 'openai':
+      return lib.parseTextResponse;
+    case 'anthropic':
+      return lib.parseAnthropicTextResponse;
+    default:
+      throw new Error(`No response-parse handler wired for provider ${provider}.`);
+  }
+}
+
 export function pending(lib, script) {
   let request = lib.Prism.text();
 
@@ -143,7 +168,7 @@ function evaluate(lib, manifest, testCase, probe) {
 
     case 'response-parse': {
       const request = pending(lib, testCase.builder).toRequest();
-      const parsed = lib.parseTextResponse(request, testCase.response).toObject();
+      const parsed = parseFor(lib, testCase.builder)(request, testCase.response).toObject();
 
       return {
         expected: testCase.expect.result_json,

@@ -49,6 +49,11 @@ export type { OpenAIConfig } from './providers/openai/openai.js';
 // parse a stored payload without a network.
 export { buildRequestBody, buildTools } from './providers/openai/build-request-body.js';
 export { parseTextResponse } from './providers/openai/parse-response.js';
+// Named for its provider, because the unqualified `parseTextResponse` above
+// is OpenAI's. A conformance runner has to be able to ask for a SPECIFIC
+// provider's parser: assuming one is what made an Anthropic corpus row
+// impossible to express, and hid G-48 in all three languages at once.
+export { parseTextResponse as parseAnthropicTextResponse } from './providers/anthropic/parse-response.js';
 export type { ParseTextResponseOptions } from './providers/openai/parse-response.js';
 export { mapMessages } from './providers/openai/maps/message-map.js';
 export { mapTools } from './providers/openai/maps/tool-map.js';
