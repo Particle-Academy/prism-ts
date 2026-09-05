@@ -14,7 +14,7 @@ jobs:
   test:
     name: node ${{ matrix.node }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     strategy:
       fail-fast: true
       matrix:
@@ -35,12 +35,67 @@ jobs:
           repository: Particle-Academy/prism-parity
           path: .parity
 
+      # The six satellite ports and the harness, checked out as SIBLINGS because
+      # that is how agent-contract's two probes reach them -- they import the
+      # built artifact of each, from outside its repo, which is the only thing
+      # in this suite asserting the packages work TOGETHER.
+      #
+      # Those two tests failed here from 2026-09-01 (G-47) for the plain reason
+      # that a single-repo checkout has no siblings. The tempting fix was to let
+      # them skip when the siblings are absent; the comment above rejects that
+      # for the corpus loader, and it is the same argument -- a skip would turn
+      # the loudest check in the ecosystem into a silent one, in exactly the
+      # environment where nobody is watching it.
+      #
+      # So CI supplies the siblings instead. PRISM_PORTS_ROOT points the probes
+      # at them, the same seam PRISM_PARITY_ROOT already uses for the corpus.
+      - name: Checkout the sibling ports
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-harness-ts
+          path: .ports/prism-harness-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-perplexity-ts
+          path: .ports/prism-perplexity-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-opentelemetry-ts
+          path: .ports/prism-opentelemetry-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-memory-ts
+          path: .ports/prism-memory-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-mcp-ts
+          path: .ports/prism-mcp-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-browser-ts
+          path: .ports/prism-browser-ts
+      - uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/prism-human-plus-ts
+          path: .ports/prism-human-plus-ts
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
 
       - run: npm ci
+
+      # Each sibling is BUILT, not just checked out. The probes import
+      # dist/index.js -- a checkout alone would leave them missing and the
+      # failure would read identically to not having checked them out at all.
+      - name: Build the sibling ports
+        run: |
+          for port in .ports/*/; do
+            echo "::group::${port}"
+            (cd "${port}" && npm ci && npm run build)
+            echo "::endgroup::"
+          done
 
       - run: npm run build
 
@@ -50,4 +105,9 @@ jobs:
       - name: Install the conformance corpus
         run: npm install ./.parity/loaders/ts --no-save
 
+      # ../.ports from agent/, which is <workspace>/.ports -- where the siblings
+      # were checked out above. Without this the probes look for real siblings
+      # of the repo, which do not exist on a CI runner.
       - run: npm test
+        env:
+          PRISM_PORTS_ROOT: ../.ports

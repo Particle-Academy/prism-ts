@@ -21,7 +21,11 @@ import { join } from 'node:path';
 // Resolved from THIS file, which sits in `agent/`, so the sibling repo is two
 // levels up. A bare relative specifier would resolve against the repo root and
 // silently miss.
-const HARNESS = new URL('../../prism-harness-ts/dist/index.js', import.meta.url).href;
+// See ecosystem-probe.mjs -- same root, same reason, and deliberately no skip
+// path when the sibling is absent.
+const PORTS_ROOT = process.env.PRISM_PORTS_ROOT ?? '../..';
+
+const HARNESS = new URL(`${PORTS_ROOT}/prism-harness-ts/dist/index.js`, import.meta.url).href;
 
 /**
  * Run the scenario and return a trace the board can render.

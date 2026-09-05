@@ -15,7 +15,18 @@
 // probe that only showed a guard letting good input through would pass equally
 // well against a guard that lets everything through.
 
-const PORT = (name) => new URL(`../../prism-${name}-ts/dist/index.js`, import.meta.url).href;
+// Where the sibling ports are built. In the envelope they are sibling repos, so
+// that is the default. CI checks them out into .ports/ and sets this, for the
+// same reason PRISM_PARITY_ROOT exists in agent.mjs: the alternative is a test
+// that can only pass on one machine.
+//
+// Deliberately NOT given a "siblings absent, skip" path. These two probes are
+// the only thing asserting the built artifacts work together, so a skip would
+// turn the ecosystem's loudest check into a silent one -- and it would skip in
+// exactly the environment where nobody is watching.
+const PORTS_ROOT = process.env.PRISM_PORTS_ROOT ?? '../..';
+
+const PORT = (name) => new URL(`${PORTS_ROOT}/prism-${name}-ts/dist/index.js`, import.meta.url).href;
 
 const FAMILIES = ['perplexity', 'opentelemetry', 'memory', 'mcp', 'browser', 'human-plus'];
 
