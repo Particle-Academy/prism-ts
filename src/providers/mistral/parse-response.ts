@@ -42,9 +42,27 @@ export function parseTextResponse(
     throw PrismError.toolLoopNotSupported();
   }
 
-  if (finishReason === FinishReason.Length) {
-    throw PrismError.maxTokensExceeded('length', 'chat.completion');
-  }
+  // A Length finish RETURNS the partial answer here, and does not throw.
+  //
+  // The reference's stance is per-PROVIDER rather than uniform, which is easy to
+  // misread: Anthropic and Mistral return, OpenAI's Responses handler and its
+  // structured handler throw, and Azure throws. This port previously threw for
+  // all three providers, so it matched the reference on OpenAI and diverged on
+  // the other two.
+  //
+  // Returning is the right behaviour to copy here. The model did write something
+  // usable and you paid for the tokens, and running out of room is exactly when
+  // the usage numbers matter most -- it is the expensive case and the unfinished
+  // one at once, so throwing discards the reasoning-token count on the very call
+  // where a caller most wants it.
+  //
+  // The cost is real and is the caller's to manage: code that ignores
+  // finishReason will treat a truncated answer as a complete one. That is why
+  // FinishReason.Length is on the response rather than implied.
+  //
+  // Found by prism-parity's anthropic-text-response suite (G-50). The existing
+  // seventeen OpenAI rows never caught it because none of them sends a
+  // max_tokens finish.
 
   const builder = new ResponseBuilder();
 

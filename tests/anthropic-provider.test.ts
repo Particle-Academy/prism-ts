@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Prism, PrismError } from '../src/index.js';
+import { FinishReason, Prism, PrismError } from '../src/index.js';
 import type { HttpRequest, HttpResponse, HttpTransport } from '../src/index.js';
 
 const OK_BODY = {
@@ -203,12 +203,34 @@ describe('Anthropic provider', () => {
     ).rejects.toThrow(PrismError);
   });
 
-  it('raises when generation was cut short', async () => {
-    const { transport } = recordingTransport({ body: { ...OK_BODY, stop_reason: 'max_tokens' } });
+  it('returns a truncated generation rather than throwing', async () => {
+    // A Length finish RETURNS the partial answer, matching the reference. This
+    // test asserted the opposite until 2026-09-06 (G-50): both ports threw for
+    // every provider, which matched the reference on OpenAI and diverged from it
+    // on Anthropic and Mistral.
+    //
+    // The text and the usage are the point. The model wrote something usable and
+    // the tokens were paid for, and running out of room is exactly when the usage
+    // numbers matter most -- so throwing discarded the counts on the one call
+    // where a caller most wants them.
+    const { transport } = recordingTransport({
+      body: {
+        ...OK_BODY,
+        stop_reason: 'max_tokens',
+        usage: { input_tokens: 11, output_tokens: 2820, output_tokens_details: { thinking_tokens: 1240 } },
+      },
+    });
 
-    await expect(
-      Prism.text().using('anthropic', 'claude-sonnet-4-5', { transport }).withPrompt('Hi').asText(),
-    ).rejects.toThrow(PrismError);
+    const response = await Prism.text()
+      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .withPrompt('Hi')
+      .asText();
+
+    // Length, not Stop: the caller has to be able to tell a truncated answer
+    // from a complete one, which is the whole cost of not throwing.
+    expect(response.finishReason).toBe(FinishReason.Length);
+    expect(response.text).toBeTruthy();
+    expect(response.usage.thoughtTokens).toBe(1240);
   });
 
   it('treats an unrecognised stop reason as unknown rather than as a clean stop', async () => {
