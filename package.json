@@ -1,11 +1,11 @@
 {
   "name": "@particle-academy/prism",
   "version": "0.1.0",
-  "description": "TypeScript port of Prism — a unified API layer over LLM providers.",
+  "description": "TypeScript port of Prism \u2014 a unified API layer over LLM providers.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Particle-Academy/prism-ts"
+    "url": "git+https://github.com/Particle-Academy/prism-ts.git"
   },
   "type": "module",
   "private": false,
