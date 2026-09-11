@@ -15,6 +15,7 @@ import type { TextRequest } from '../../text/request.js';
 import { ResponseBuilder } from '../../text/response-builder.js';
 import type { TextResponse } from '../../text/response.js';
 import { TextStep } from '../../text/step.js';
+import { GeneratedImage } from '../../value-objects/generated-image.js';
 import { Meta } from '../../value-objects/meta.js';
 import type { ProviderRateLimit } from '../../value-objects/provider-rate-limit.js';
 import { ToolCall } from '../../value-objects/tool-call.js';
@@ -116,6 +117,8 @@ function buildStep(
       openPageUrls: webSearchValues(output, 'open_page', 'url'),
       findInPagePatterns: webSearchValues(output, 'find_in_page', 'pattern'),
       reasoningSummaries: reasoningSummaries(output),
+      generatedImages: generatedImages(output),
+      imageGenerationCalls: imageGenerationCalls(output),
     }),
     raw: data,
   });
@@ -170,6 +173,68 @@ function webSearchValues(
   const unique = [...new Set(values)];
 
   return unique.length > 0 ? unique : null;
+}
+
+/**
+ * The images a HOSTED image tool generated, or null when there were none.
+ *
+ * Every other hosted tool here hands its output back through
+ * `additionalContent`, and a turn that generated an image had nowhere to put
+ * the bytes but `raw` — the untyped escape hatch, not a surface. So a caller
+ * using `web_search` was served and a caller using `image_generation` was not.
+ *
+ * Built as the same `GeneratedImage` the images endpoint returns and then
+ * SERIALISED, because `additionalContent` here is typed `JsonValue` and cannot
+ * hold a class instance. The reference keeps the object; both ports emit its
+ * serialised form, which is byte-identical once the step is serialised — so the
+ * cross-language corpora agree and only the in-process ergonomics differ. That
+ * difference is general to `additionalContent` in the ports rather than
+ * anything about images, and is recorded as G-43 in the envelope's register.
+ *
+ * Constructed through the value object rather than assembling the literal by
+ * hand, so the key names and the revised-prompt handling come from one place
+ * and cannot drift from the images endpoint's shape.
+ */
+function generatedImages(output: readonly JsonValue[]): JsonObject[] | null {
+  const images = output
+    .filter(isJsonObject)
+    .filter((item) => item.type === 'image_generation_call')
+    .filter((item) => typeof item.result === 'string' && item.result !== '')
+    .map((item) =>
+      new GeneratedImage(
+        null,
+        readString(item.result, ''),
+        typeof item.revised_prompt === 'string' ? item.revised_prompt : null,
+      ).toObject(),
+    );
+
+  return images.length > 0 ? images : null;
+}
+
+/**
+ * What the provider ACTUALLY drew, as opposed to what was asked for.
+ *
+ * Separate from the images because this is the part a caller reconciles against
+ * its own request: a provider that silently served a different size or quality
+ * is visible only here.
+ */
+function imageGenerationCalls(output: readonly JsonValue[]): JsonObject[] | null {
+  const calls = output
+    .filter(isJsonObject)
+    .filter((item) => item.type === 'image_generation_call')
+    .map((item) =>
+      whereNotNull({
+        id: typeof item.id === 'string' ? item.id : null,
+        status: typeof item.status === 'string' ? item.status : null,
+        revised_prompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : null,
+        size: typeof item.size === 'string' ? item.size : null,
+        quality: typeof item.quality === 'string' ? item.quality : null,
+        background: typeof item.background === 'string' ? item.background : null,
+        output_format: typeof item.output_format === 'string' ? item.output_format : null,
+      }),
+    );
+
+  return calls.length > 0 ? calls : null;
 }
 
 /** Always present, even when empty — the reference does not drop this one. */

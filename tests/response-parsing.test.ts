@@ -129,6 +129,75 @@ describe('parseTextResponse', () => {
       reasoningSummaries: ['considering'],
     });
   });
+
+  it('hands back the image a HOSTED image tool generated', () => {
+    // The asymmetry this closes: web_search output reached additionalContent
+    // and image_generation output reached nothing but `raw`, so one hosted tool
+    // was served and the other was not.
+    const payload = completed({
+      output: [
+        {
+          type: 'image_generation_call',
+          id: 'ig_1',
+          status: 'completed',
+          revised_prompt: 'a photorealistic prism',
+          size: '1024x1024',
+          quality: 'high',
+          output_format: 'png',
+          result: 'aVdBTUEAALGPC',
+        },
+        { type: 'message', status: 'completed', content: [{ type: 'output_text', text: 'drawn' }] },
+      ],
+    });
+
+    const additional = parseTextResponse(request(), payload).steps[0]?.additionalContent;
+
+    // This port's own GeneratedImage serialisation, asserted as it actually is
+    // rather than as the reference's. The two Media shapes ALREADY differ — this
+    // one carries `kind` and `file_id`, the reference carries `local_path` and
+    // `storage_path` — which predates this change and is a reason Media wants a
+    // cross-language suite (see G-42). Building through the value object rather
+    // than a literal is what keeps these keys from drifting from the images
+    // endpoint's within this port.
+    expect(additional?.generatedImages).toEqual([
+      {
+        kind: 'image',
+        url: null,
+        base64: 'aVdBTUEAALGPC',
+        mime_type: null,
+        file_id: null,
+        filename: null,
+        revised_prompt: 'a photorealistic prism',
+      },
+    ]);
+
+    // What the provider ACTUALLY drew, which is the part a caller reconciles
+    // against what it asked for.
+    expect(additional?.imageGenerationCalls).toEqual([
+      {
+        id: 'ig_1',
+        status: 'completed',
+        revised_prompt: 'a photorealistic prism',
+        size: '1024x1024',
+        quality: 'high',
+        output_format: 'png',
+      },
+    ]);
+  });
+
+  it('adds no image keys to a turn that generated none', () => {
+    // The vacuity guard for the test above: a parser that always emitted an
+    // empty array would pass it, and every caller would then have to branch on
+    // a key that is always there.
+    const payload = completed({
+      output: [{ type: 'message', status: 'completed', content: [{ type: 'output_text', text: 'no image' }] }],
+    });
+
+    const additional = parseTextResponse(request(), payload).steps[0]?.additionalContent;
+
+    expect(additional).not.toHaveProperty('generatedImages');
+    expect(additional).not.toHaveProperty('imageGenerationCalls');
+  });
 });
 
 describe('mapFinishReason', () => {
