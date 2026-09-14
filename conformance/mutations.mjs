@@ -55,6 +55,22 @@ function dropNullsDeeply(value) {
   return value;
 }
 
+function dropKeyDeeply(value, dropped) {
+  if (Array.isArray(value)) return value.map((item) => dropKeyDeeply(item, dropped));
+
+  if (isObject(value)) {
+    const result = {};
+
+    for (const [key, item] of Object.entries(value)) {
+      if (key !== dropped) result[key] = dropKeyDeeply(item, dropped);
+    }
+
+    return result;
+  }
+
+  return value;
+}
+
 /**
  * The registry. Each entry names the decision point it corrupts, matching the
  * `scope` the corpus declares for that probe.
@@ -191,6 +207,17 @@ export const MUTATIONS = {
     // rather than the probe better.
     parsedResult(value) {
       return dropNullsDeeply(value);
+    },
+  },
+
+  'drop-thinking-signature': {
+    scope: 'response parsing',
+    // What both ports did until G-57: a thinking block's text survived parsing
+    // and its signature did not, so nothing could send the block back on a
+    // tool-use turn. The raw payload's own `signature` key is left alone; only
+    // the parsed result loses it.
+    parsedResult(value) {
+      return dropKeyDeeply(value, 'thinking_signature');
     },
   },
 
