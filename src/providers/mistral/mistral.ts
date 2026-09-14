@@ -24,6 +24,7 @@ import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { MistralStreamMapper } from './stream-events.js';
 import { buildTranscriptionForm, parseTranscriptionResponse } from '../openai/audio.js';
+import { withoutTrailingSlashes } from '../../internal/url.js';
 
 export interface MistralConfig {
   apiKey?: string;
@@ -69,7 +70,7 @@ export class Mistral extends Provider {
     super();
 
     this.apiKey = config.apiKey ?? readEnv('MISTRAL_API_KEY') ?? '';
-    this.url = (config.url ?? readEnv('MISTRAL_URL') ?? DEFAULT_URL).replace(/\/+$/, '');
+    this.url = withoutTrailingSlashes(config.url ?? readEnv('MISTRAL_URL') ?? DEFAULT_URL);
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
     this.#binaryTransport = config.binaryTransport ?? fetchBinaryTransport;

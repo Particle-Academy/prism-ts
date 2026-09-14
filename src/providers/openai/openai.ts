@@ -62,6 +62,7 @@ import { Provider } from '../provider.js';
 import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
+import { withoutTrailingSlashes } from '../../internal/url.js';
 
 export interface OpenAIConfig {
   apiKey?: string;
@@ -135,7 +136,7 @@ export class OpenAI extends Provider {
    */
   override async *stream(request: TextRequest): AsyncGenerator<StreamEvent> {
     const response = await this.#streamTransport({
-      url: `${this.url.replace(/\/+$/, '')}/responses`,
+      url: `${withoutTrailingSlashes(this.url)}/responses`,
       method: 'POST',
       headers: { ...this.headers(), Accept: 'text/event-stream' },
       body: canonicalJson({ ...buildRequestBody(request), stream: true }),
@@ -170,7 +171,7 @@ export class OpenAI extends Provider {
    */
   override async embeddings(request: EmbeddingsRequest): Promise<EmbeddingsResponse> {
     const response = await this.#transport({
-      url: `${this.url.replace(/\/+$/, '')}/embeddings`,
+      url: `${withoutTrailingSlashes(this.url)}/embeddings`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(buildEmbeddingsBody(request)),
@@ -189,7 +190,7 @@ export class OpenAI extends Provider {
 
   override async images(request: ImagesRequest): Promise<ImagesResponse> {
     const response = await this.#transport({
-      url: `${this.url.replace(/\/+$/, '')}/images/generations`,
+      url: `${withoutTrailingSlashes(this.url)}/images/generations`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(buildImagesBody(request)),
@@ -208,7 +209,7 @@ export class OpenAI extends Provider {
 
   override async moderation(request: ModerationRequest): Promise<ModerationResponse> {
     const response = await this.#transport({
-      url: `${this.url.replace(/\/+$/, '')}/moderations`,
+      url: `${withoutTrailingSlashes(this.url)}/moderations`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(buildModerationBody(request)),
@@ -227,7 +228,7 @@ export class OpenAI extends Provider {
 
   override async textToSpeech(request: TextToSpeechRequest): Promise<AudioResponse> {
     const response = await this.#binaryTransport({
-      url: `${this.url.replace(/\/+$/, '')}/audio/speech`,
+      url: `${withoutTrailingSlashes(this.url)}/audio/speech`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(buildSpeechBody(request)),
@@ -248,7 +249,7 @@ export class OpenAI extends Provider {
 
   override async speechToText(request: SpeechToTextRequest): Promise<AudioTextResponse> {
     const response = await this.#binaryTransport({
-      url: `${this.url.replace(/\/+$/, '')}/audio/transcriptions`,
+      url: `${withoutTrailingSlashes(this.url)}/audio/transcriptions`,
       method: 'POST',
       headers: this.headers(),
       body: '',
@@ -302,7 +303,7 @@ export class OpenAI extends Provider {
    */
   override async downloadFile(request: DownloadFileRequest): Promise<Uint8Array> {
     const response = await this.#binaryTransport({
-      url: `${this.url.replace(/\/+$/, '')}/files/${encodeURIComponent(request.fileId)}/content`,
+      url: `${withoutTrailingSlashes(this.url)}/files/${encodeURIComponent(request.fileId)}/content`,
       method: 'GET',
       headers: this.headers(),
       body: '',
@@ -444,7 +445,7 @@ export class OpenAI extends Provider {
     jsonBody?: JsonObject,
   ): Promise<unknown> {
     const response = await this.#binaryTransport({
-      url: `${this.url.replace(/\/+$/, '')}/${path}`,
+      url: `${withoutTrailingSlashes(this.url)}/${path}`,
       method,
       headers: this.headers(),
       body: jsonBody === undefined ? '' : canonicalJson(jsonBody),
@@ -475,7 +476,7 @@ export class OpenAI extends Provider {
     }
 
     const response = await this.#transport({
-      url: `${this.url.replace(/\/+$/, '')}/responses`,
+      url: `${withoutTrailingSlashes(this.url)}/responses`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(body),

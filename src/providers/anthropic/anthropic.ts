@@ -17,6 +17,7 @@ import { Provider } from '../provider.js';
 import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
+import { withoutTrailingSlashes } from '../../internal/url.js';
 
 export interface AnthropicConfig {
   apiKey?: string;
@@ -76,7 +77,7 @@ export class Anthropic extends Provider {
 
   override async text(request: TextRequest): Promise<TextResponse> {
     const response = await this.#transport({
-      url: `${this.url.replace(/\/+$/, '')}/messages`,
+      url: `${withoutTrailingSlashes(this.url)}/messages`,
       method: 'POST',
       headers: this.headers(),
       body: canonicalJson(buildRequestBody(request)),
@@ -104,7 +105,7 @@ export class Anthropic extends Provider {
    */
   override async *stream(request: TextRequest): AsyncGenerator<StreamEvent> {
     const response = await this.#streamTransport({
-      url: `${this.url.replace(/\/+$/, '')}/messages`,
+      url: `${withoutTrailingSlashes(this.url)}/messages`,
       method: 'POST',
       headers: { ...this.headers(), Accept: 'text/event-stream' },
       body: canonicalJson({ ...buildRequestBody(request), stream: true }),

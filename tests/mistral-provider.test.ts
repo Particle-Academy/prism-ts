@@ -305,6 +305,17 @@ describe('configuration', () => {
 
   it('strips a trailing slash so paths do not double up', () => {
     expect(new Mistral({ url: 'https://gateway.test/v1/' }).url).toBe('https://gateway.test/v1');
+    expect(new Mistral({ url: 'https://gateway.test/v1///' }).url).toBe('https://gateway.test/v1');
+  });
+
+  it('strips trailing slashes in linear time', () => {
+    // replace(/\/+$/, '') was quadratic on a run of slashes that does not end the
+    // string: 40,000 of them took about a second.
+    const url = 'https://gateway.test/' + '/'.repeat(400_000) + 'v1';
+    const started = performance.now();
+
+    expect(new Mistral({ url }).url).toBe(url);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it('omits the Authorization header entirely when no key is configured', () => {

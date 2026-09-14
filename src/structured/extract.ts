@@ -28,9 +28,37 @@ export function extractStructured(text: string): JsonObject | null {
     return direct;
   }
 
-  const fenced = /```(?:json)?\s*\n?([\s\S]*?)```/i.exec(text);
+  const fenced = firstFencedBlock(text);
 
-  return fenced === null ? null : parseObject(fenced[1] ?? '');
+  return fenced === null ? null : parseObject(fenced);
+}
+
+/**
+ * The contents of the first ``` fence that closes, with a leading `json` tag
+ * dropped, or null when none does.
+ *
+ * Found with indexOf rather than a regular expression. The obvious pattern,
+ * /```(?:json)?\s*([\s\S]*?)```/, is retried at every opening fence and rescans
+ * the rest of the text each time, which is quadratic on model output, and model
+ * output is not ours to bound. Leading whitespace is left in, because
+ * parseObject() trims.
+ */
+function firstFencedBlock(text: string): string | null {
+  const open = text.indexOf('```');
+
+  if (open === -1) {
+    return null;
+  }
+
+  let start = open + 3;
+
+  if (text.slice(start, start + 4).toLowerCase() === 'json') {
+    start += 4;
+  }
+
+  const close = text.indexOf('```', start);
+
+  return close === -1 ? null : text.slice(start, close);
 }
 
 function parseObject(candidate: string): JsonObject | null {

@@ -151,6 +151,55 @@ describe('structured output', () => {
     expect(extractStructured('```json\n{"name":"Ada"}\n```')).toEqual({ name: 'Ada' });
   });
 
+  it('finds the same fenced block the regular expression it replaced did', () => {
+    // The regex is kept here as the oracle. It was replaced because it is
+    // quadratic on model output, not because it was wrong.
+    const oracle = (text: string) => {
+      const direct = (() => {
+        try {
+          const parsed: unknown = JSON.parse(text.trim());
+          return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (direct !== null) return direct;
+      const fenced = /```(?:json)?\s*\n?([\s\S]*?)```/i.exec(text);
+      if (fenced === null) return null;
+      try {
+        const parsed: unknown = JSON.parse((fenced[1] ?? '').trim());
+        return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    };
+
+    for (const text of [
+      'Here you go:\n```json\n{"name":"Ada"}\n```\nAnything else?',
+      '```JSON\n{"name":"Ada"}```',
+      '```\n{"name":"Ada"}\n```',
+      '```json{"name":"Ada"}```',
+      '```jsonx{"name":"Ada"}```',
+      '````{"name":"Ada"}````',
+      '```json\n{"name":"Ada"}',
+      '``````',
+      '```json```',
+      'first ```{"a":1}``` second ```{"b":2}```',
+      'no fence at all',
+    ]) {
+      expect(extractStructured(text), text).toEqual(oracle(text));
+    }
+  });
+
+  it('stays linear on an unclosed fence followed by a long run of whitespace', () => {
+    // The regex took seconds here: 20,000 spaces cost 29ms and it grows with
+    // the square. Model output is not ours to bound.
+    const started = performance.now();
+
+    expect(extractStructured('```json' + ' '.repeat(400_000))).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('rejects a parsed value that is not an object', () => {
     // `[1,2,3]` parses. Returning it as "structured" would satisfy the type and
     // break the first caller to read a property off it.
