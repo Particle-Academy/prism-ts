@@ -293,6 +293,23 @@ describe('Anthropic provider', () => {
       expect(body).not.toHaveProperty('effort');
     });
 
+    it('sends a thinking shape Prism does not spell as given, and reads its spelling for off', async () => {
+      // The same rules as the reference, value for value.
+      const cases: [unknown, unknown][] = [
+        [{ type: 'enabled', budget_tokens: 2048 }, { type: 'enabled', budget_tokens: 2048 }],
+        [{ type: 'adaptive', display: 'summarized' }, { type: 'adaptive', display: 'summarized' }],
+        [{ type: 'disabled' }, { type: 'disabled' }],
+        [{ enabled: false }, undefined],
+        [{}, undefined],
+      ];
+
+      for (const [thinking, expected] of cases) {
+        const body = await bodyFor((pending) => pending.withProviderOptions({ thinking } as never));
+
+        expect(body.thinking, JSON.stringify(thinking)).toEqual(expected);
+      }
+    });
+
     it('sends neither thinking nor output_config when no option asks for them', async () => {
       const body = await bodyFor((pending) => pending);
 

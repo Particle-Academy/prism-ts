@@ -73,9 +73,9 @@ export function buildRequestBody(request: TextRequest): JsonObject {
  * mode that worked in PHP failed here. A budget that is not an integer falls back
  * to 1024, Anthropic's minimum, as in the reference.
  *
- * Every other shape, `{ type: 'adaptive' }` included, is sent as given. The
- * reference keeps only `{ type: 'adaptive' }` and drops the rest; which way both
- * should go is open in G-57.
+ * A map with `enabled` and no `type` that is not `true` asks for no thinking, and
+ * so does an empty map. Every other shape, `{ type: 'adaptive' }` included, is
+ * sent as given, as the reference sends it.
  */
 function resolveThinking(request: TextRequest): JsonValue | null {
   if (request.reasoningEnabled() === false) {
@@ -84,7 +84,19 @@ function resolveThinking(request: TextRequest): JsonValue | null {
 
   const thinking = request.providerOptions('thinking');
 
-  if (isJsonObject(thinking) && thinking.type !== 'adaptive' && thinking.enabled === true) {
+  if (!isJsonObject(thinking)) {
+    return thinking ?? null;
+  }
+
+  if (Object.keys(thinking).length === 0) {
+    return null;
+  }
+
+  if (thinking.type === 'adaptive') {
+    return thinking;
+  }
+
+  if (thinking.enabled === true) {
     const budget = thinking.budgetTokens;
 
     return {
@@ -93,7 +105,11 @@ function resolveThinking(request: TextRequest): JsonValue | null {
     };
   }
 
-  return thinking ?? null;
+  if ('enabled' in thinking && !('type' in thinking)) {
+    return null;
+  }
+
+  return thinking;
 }
 
 function isPresent(value: JsonValue | undefined): value is JsonValue {
