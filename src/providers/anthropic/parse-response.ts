@@ -130,7 +130,7 @@ function buildStep(
     messages: request.messages(),
     systemPrompts: request.systemPrompts(),
     additionalContent: whereNotNull({
-      thinking: thinkingText(content),
+      ...thinking(content),
       stopSequence: typeof data.stop_sequence === 'string' ? data.stop_sequence : null,
     }),
     raw: data,
@@ -168,13 +168,20 @@ function mapToolCalls(content: readonly JsonValue[]): ToolCall[] {
     );
 }
 
-/** Extended-thinking blocks joined, or null when the model did not think. */
-function thinkingText(content: readonly JsonValue[]): string | null {
-  const parts = content
-    .filter(isJsonObject)
-    .filter((block) => block.type === 'thinking')
-    .map((block) => readString(block.thinking, ''))
-    .filter((text) => text !== '');
+/**
+ * The first thinking block's text and signature, as the reference keeps them.
+ *
+ * The signature is what lets the block be sent back on a later tool-use turn
+ * (G-57). It covers one block's text exactly, so the text kept beside it is that
+ * block's, not every block joined: joined text under one signature is a block
+ * Anthropic would refuse. A response with more than one thinking block keeps only
+ * the first, in all three languages.
+ */
+function thinking(content: readonly JsonValue[]): { thinking: string | null; thinking_signature: string | null } {
+  const block = content.filter(isJsonObject).find((candidate) => candidate.type === 'thinking');
 
-  return parts.length > 0 ? parts.join('') : null;
+  return {
+    thinking: typeof block?.thinking === 'string' ? block.thinking : null,
+    thinking_signature: typeof block?.signature === 'string' ? block.signature : null,
+  };
 }

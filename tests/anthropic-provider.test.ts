@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { FinishReason, Prism, PrismError } from '../src/index.js';
+import {
+  AssistantMessage,
+  FinishReason,
+  Prism,
+  PrismError,
+  ToolCall,
+  ToolResult,
+  ToolResultMessage,
+  UserMessage,
+} from '../src/index.js';
 import type { HttpRequest, HttpResponse, HttpTransport } from '../src/index.js';
 
 const OK_BODY = {
@@ -244,5 +253,128 @@ describe('Anthropic provider', () => {
       .asText();
 
     expect(response.finishReason).toBe('unknown');
+  });
+
+  describe('thinking options (G-57)', () => {
+    async function bodyFor(configure: (pending: ReturnType<typeof Prism.text>) => ReturnType<typeof Prism.text>) {
+      const { transport, calls } = recordingTransport();
+
+      await configure(Prism.text().using('anthropic', 'claude-sonnet-4-6', { transport }).withPrompt('Hi')).asText();
+
+      return bodyOf(calls[0]);
+    }
+
+    it("spells Prism's enabled shape the way Anthropic takes it", async () => {
+      // Sent as given this was a 400, so a mode that worked in PHP failed here.
+      const body = await bodyFor((pending) =>
+        pending.withProviderOptions({ thinking: { enabled: true, budgetTokens: 2048 } }),
+      );
+
+      expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 2048 });
+    });
+
+    it('falls back to the minimum budget when none is an integer', async () => {
+      for (const budgetTokens of [undefined, '4000', 1.5]) {
+        const body = await bodyFor((pending) =>
+          pending.withProviderOptions({ thinking: { enabled: true, ...(budgetTokens === undefined ? {} : { budgetTokens }) } }),
+        );
+
+        expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 1024 });
+      }
+    });
+
+    it('sends adaptive thinking, and effort as output_config', async () => {
+      const body = await bodyFor((pending) =>
+        pending.withProviderOptions({ thinking: { type: 'adaptive' }, effort: 'medium' }),
+      );
+
+      expect(body.thinking).toEqual({ type: 'adaptive' });
+      expect(body.output_config).toEqual({ effort: 'medium' });
+      expect(body).not.toHaveProperty('effort');
+    });
+
+    it('sends neither thinking nor output_config when no option asks for them', async () => {
+      const body = await bodyFor((pending) => pending);
+
+      expect(body).not.toHaveProperty('thinking');
+      expect(body).not.toHaveProperty('output_config');
+    });
+
+    it('lets withReasoning(false) win over a thinking option, as the reference does', async () => {
+      const body = await bodyFor((pending) =>
+        pending.withProviderOptions({ thinking: { type: 'adaptive' } }).withReasoning(false),
+      );
+
+      expect(body).not.toHaveProperty('thinking');
+    });
+
+    it('keeps the thinking signature from a response and sends the block back first', async () => {
+      // Anthropic requires the thinking block, with its signature, on a tool-use
+      // turn with thinking on. The text kept is the FIRST block's, because the
+      // signature covers exactly that block.
+      const { transport, calls } = recordingTransport({
+        body: {
+          ...OK_BODY,
+          content: [
+            { type: 'thinking', thinking: 'first', signature: 'sig-1' },
+            { type: 'text', text: 'Checking.' },
+            { type: 'thinking', thinking: 'second', signature: 'sig-2' },
+          ],
+        },
+      });
+      const pending = () =>
+        Prism.text()
+          .using('anthropic', 'claude-sonnet-4-6', { transport })
+          .withProviderOptions({ thinking: { type: 'adaptive' } });
+
+      const first = await pending().withPrompt('Weather?').asText();
+
+      expect(first.additionalContent).toMatchObject({ thinking: 'first', thinking_signature: 'sig-1' });
+
+      await pending()
+        .withMessages([
+          new UserMessage('Weather?'),
+          new AssistantMessage('Checking.', [new ToolCall('toolu_1', 'weather', { city: 'Detroit' })], first.additionalContent),
+          new ToolResultMessage([new ToolResult('toolu_1', 'weather', { city: 'Detroit' }, 'Sunny')]),
+        ])
+        .asText();
+
+      const assistant = (bodyOf(calls[1]).messages as { role: string; content: { type: string }[] }[]).find(
+        (message) => message.role === 'assistant',
+      );
+
+      expect(assistant?.content[0]).toEqual({ type: 'thinking', thinking: 'first', signature: 'sig-1' });
+      expect(assistant?.content.map((block) => block.type)).toEqual(['thinking', 'text', 'tool_use']);
+    });
+
+    it('sends back a thinking block whose text was omitted, since its signature is still required', async () => {
+      const { transport, calls } = recordingTransport();
+
+      await Prism.text()
+        .using('anthropic', 'claude-sonnet-4-6', { transport })
+        .withMessages([
+          new UserMessage('Weather?'),
+          new AssistantMessage('', [new ToolCall('toolu_1', 'weather', {})], { thinking: '', thinking_signature: 'sig-1' }),
+          new ToolResultMessage([new ToolResult('toolu_1', 'weather', {}, 'Sunny')]),
+        ])
+        .asText();
+
+      const assistant = (bodyOf(calls[0]).messages as { role: string; content: unknown[] }[])[1];
+
+      expect(assistant?.content[0]).toEqual({ type: 'thinking', thinking: '', signature: 'sig-1' });
+    });
+
+    it('sends no thinking block without a signature', async () => {
+      const { transport, calls } = recordingTransport();
+
+      await Prism.text()
+        .using('anthropic', 'claude-sonnet-4-6', { transport })
+        .withMessages([new UserMessage('Hi'), new AssistantMessage('Hello.', [], { thinking: 'hmm' }), new UserMessage('Again')])
+        .asText();
+
+      const assistant = (bodyOf(calls[0]).messages as { role: string; content: unknown[] }[])[1];
+
+      expect(assistant?.content).toEqual([{ type: 'text', text: 'Hello.' }]);
+    });
   });
 });

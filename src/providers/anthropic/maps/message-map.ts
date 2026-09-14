@@ -74,6 +74,14 @@ export function mapSystem(systemPrompts: readonly SystemMessage[]): string | nul
 
 function mapAssistantMessage(message: AssistantMessage, items: JsonObject[]): void {
   const content: JsonValue[] = [];
+  const { thinking, thinking_signature: signature } = message.additionalContent;
+
+  // The thinking block goes back FIRST, with its signature. Anthropic requires
+  // it on a tool-use turn with thinking on, and refuses a thinking block that
+  // has no signature, so without both it is left out (G-57).
+  if (typeof thinking === 'string' && typeof signature === 'string') {
+    content.push({ type: 'thinking', thinking, signature });
+  }
 
   // Text first. Anthropic reads content blocks in order, and a tool_use ahead
   // of the reasoning that led to it reads as a model that decided first and
