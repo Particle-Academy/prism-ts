@@ -84,6 +84,11 @@ function resolveThinking(request: TextRequest): JsonValue | null {
 
   const thinking = request.providerOptions('thinking');
 
+  // `false` asks for no thinking, as in the reference. Sent, it is a 400.
+  if (thinking === false) {
+    return null;
+  }
+
   if (!isJsonObject(thinking)) {
     return thinking ?? null;
   }

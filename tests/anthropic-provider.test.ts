@@ -301,6 +301,7 @@ describe('Anthropic provider', () => {
         [{ type: 'disabled' }, { type: 'disabled' }],
         [{ enabled: false }, undefined],
         [{}, undefined],
+        [false, undefined],
       ];
 
       for (const [thinking, expected] of cases) {
