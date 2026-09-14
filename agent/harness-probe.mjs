@@ -118,6 +118,9 @@ export async function probeHarness() {
     // languages share one store, so it is asserted rather than described.
     check('the session key matches the reference format', session.key(), 'session:23bd5c8949f6:7:probe');
 
+    // The model asks for the call ONCE. On resume the harness runs the approved
+    // call where it stopped rather than asking again, as a real provider would
+    // issue a repeated call under a new id.
     let turn = 0;
     const runtime = new AgentRuntime({
       modes,
@@ -125,7 +128,7 @@ export async function probeHarness() {
       client: async () => {
         turn += 1;
 
-        return turn <= 2
+        return turn === 1
           ? {
               text: '',
               finishReason: 'tool_calls',
@@ -143,7 +146,7 @@ export async function probeHarness() {
 
     // The decision is durable: written to the thread, which lives in the file
     // store, so a different process would read the same answer.
-    await recordApproval(session, 'call-1', true);
+    await recordApproval(session, first.pendingApprovals[0]?.id, true);
 
     const resumed = await runtime.send(session, '');
 
