@@ -24,6 +24,16 @@ const METHOD_NOT_FOUND = -32601;
 const INVALID_PARAMS = -32602;
 const INTERNAL_ERROR = -32603;
 
+/**
+ * What a failure SAYS, and never the thrown value itself.
+ *
+ * String(error) of an arbitrary thrown value can carry more than its message, and
+ * this goes back over the wire. A non-Error throw is described, not echoed.
+ */
+function messageOf(error) {
+  return error instanceof Error ? error.message : 'The call failed with a value that is not an Error.';
+}
+
 function definitions() {
   return Object.entries(tools).map(([name, tool]) => ({
     name,
@@ -72,7 +82,7 @@ async function dispatch(method, params) {
       // A tool that fails returns isError on the RESULT, not a JSON-RPC error.
       // The distinction matters: the call succeeded, the work did not.
       return {
-        content: [{ type: 'text', text: String(error?.message ?? error) }],
+        content: [{ type: 'text', text: messageOf(error) }],
         isError: true,
       };
     }
@@ -128,7 +138,7 @@ const server = createServer((request, response) => {
       send(response, 200, {
         jsonrpc: '2.0',
         id,
-        error: { code: error?.code ?? INTERNAL_ERROR, message: String(error?.message ?? error) },
+        error: { code: error?.code ?? INTERNAL_ERROR, message: messageOf(error) },
       });
     }
   });
