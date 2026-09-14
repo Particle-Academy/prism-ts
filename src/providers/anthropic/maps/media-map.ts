@@ -102,7 +102,10 @@ function documentSource(document: Document): JsonObject {
       );
     }
 
-    return { type: 'text', media_type: mimeType, data: decoded };
+    // text/plain whatever the document declared. Anthropic's text source takes
+    // nothing else, so text/markdown, text/csv or a charset parameter failed the
+    // whole request (prism#49). The content is sent as given.
+    return { type: 'text', media_type: 'text/plain', data: decoded };
   }
 
   const base64 = document.base64();

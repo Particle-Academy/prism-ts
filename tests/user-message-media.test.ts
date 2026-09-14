@@ -300,6 +300,19 @@ describe('Anthropic media mapping', () => {
     });
   });
 
+  it('sends every text document as text/plain, the only text media type Anthropic accepts', () => {
+    // prism#49: a declared text/markdown or text/csv made Anthropic refuse the
+    // whole request.
+    for (const mimeType of ['text/markdown', 'text/csv', 'text/html', 'text/plain; charset=utf-8']) {
+      const document = Document.fromRawContent(new TextEncoder().encode('# Brief'), mimeType);
+      const items = mapAnthropic([new UserMessage('read this', [document])]);
+
+      expect(items[0], mimeType).toMatchObject({
+        content: [{}, { source: { type: 'text', media_type: 'text/plain', data: '# Brief' } }],
+      });
+    }
+  });
+
   it('refuses a text document whose bytes are not valid UTF-8, by name', () => {
     // The default TextDecoder replaces every invalid byte with U+FFFD, so this
     // would have reached the model as text peppered with replacement characters
