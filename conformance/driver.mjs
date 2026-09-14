@@ -55,6 +55,7 @@ export function hydrate(lib, value) {
 
   if (tag === 'ToolChoice') return lib.toolChoiceFromName(value.case);
   if (tag === 'Tool') return hydrateTool(lib, value);
+  if (MEDIA.has(tag)) return hydrateMedia(lib, value);
 
   const parameters = CONSTRUCTS[tag];
 
@@ -71,6 +72,66 @@ export function hydrate(lib, value) {
   while (args.length > 0 && args.at(-1) === undefined) args.pop();
 
   return new Construct(...args);
+}
+
+/** The media constructs, built from a `from` discriminator rather than positional arguments. */
+const MEDIA = new Set(['Image', 'Audio', 'Video', 'Document']);
+
+/**
+ * Build media the way a caller would, dispatching on the case's `from`.
+ *
+ * Never from a local path: a golden generated that way would record bytes read
+ * off the machine that generated it. Raw content arrives as a UTF-8 string and
+ * is encoded here, because the port takes bytes.
+ *
+ * A document's title is set with `titled()`. The reference passes it as the
+ * factory's second argument, where this port's factories keep their base
+ * meaning (the mime type) -- a deliberate divergence recorded in Document
+ * itself. The corpus names the VALUE, so both routes meet at the same stored
+ * form.
+ */
+function hydrateMedia(lib, spec) {
+  const Construct = lib[spec.$];
+
+  if (typeof Construct !== 'function') throw new Error(`The port exports no ${spec.$}.`);
+
+  const isDocument = spec.$ === 'Document';
+  const mimeType = spec.mimeType ?? null;
+  const title = spec.title ?? null;
+
+  if (!isDocument && title !== null) throw new Error('Only a Document has a title.');
+
+  let media;
+
+  switch (spec.from) {
+    case 'url':
+      media = Construct.fromUrl(spec.url, mimeType);
+      break;
+    case 'base64':
+      media = Construct.fromBase64(spec.base64, mimeType);
+      break;
+    case 'rawContent':
+      media = Construct.fromRawContent(new TextEncoder().encode(spec.rawContent), mimeType);
+      break;
+    case 'fileId':
+      media = Construct.fromFileId(spec.fileId);
+      break;
+    case 'text':
+      if (!isDocument) throw new Error('Only a Document is built from text.');
+      media = Construct.fromText(spec.text);
+      break;
+    case 'chunks':
+      if (!isDocument) throw new Error('Only a Document is built from chunks.');
+      media = Construct.fromChunks(spec.chunks);
+      break;
+    default:
+      throw new Error(`Unknown media source ${spec.from}.`);
+  }
+
+  if (title !== null) media.titled(title);
+  if (spec.filename !== undefined) media.as(spec.filename);
+
+  return media;
 }
 
 function hydrateTool(lib, spec) {

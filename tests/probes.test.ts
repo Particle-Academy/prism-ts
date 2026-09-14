@@ -112,6 +112,8 @@ describe('the corpus itself', () => {
       // Dropping it here would hide a whole suite arriving unnoticed.
       'anthropic-text-response',
       'json-container-identity',
+      // Media's stored form, driven through this runner's media arm (G-53).
+      'media-roundtrip',
       'openai-text-request',
       'openai-text-response',
       'value-object-roundtrip',
