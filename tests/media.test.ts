@@ -44,6 +44,27 @@ describe('media', () => {
     expect(media.base64()).toBeNull();
   });
 
+  it('names a failed fetch WITHOUT the secrets in the url', async () => {
+    // An error message is logged and shipped to an error tracker as a matter of
+    // course. Userinfo carries credentials outright, and a presigned url carries
+    // a bearer-equivalent token in its query string. Same fix as the PHP
+    // reference's Media::safeUrl(), reported there as prism#45.
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Response('', { status: 403 });
+
+    try {
+      const media = Image.fromUrl('https://alice:hunter2@files.example.test/a/cat.png?token=SECRET123');
+
+      await expect(media.fetch()).rejects.toThrowError(
+        /https:\/\/files\.example\.test\/a\/cat\.png\?\[redacted\] responded 403/,
+      );
+
+      await expect(media.fetch()).rejects.not.toThrowError(/hunter2|SECRET123|alice/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('decodes base64 into raw content without a network call', () => {
     const media = Image.fromBase64(Buffer.from('bytes').toString('base64'), 'image/png');
 

@@ -232,7 +232,7 @@ export abstract class Media {
     const response = await globalThis.fetch(this.url);
 
     if (!response.ok) {
-      throw PrismError.unfetchableMedia(`${this.url} responded ${response.status}`);
+      throw PrismError.unfetchableMedia(`${safeUrl(this.url)} responded ${response.status}`);
     }
 
     this.setRawContent(
@@ -346,4 +346,30 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 
 export function guessMimeType(path: string): string | null {
   return MIME_TYPES[extname(path).toLowerCase()] ?? null;
+}
+
+/**
+ * A url with its secret-bearing parts removed, for a message that gets logged.
+ *
+ * An error message is logged and shipped to an error tracker as a matter of
+ * course, and a url carries credentials often enough that it belongs in
+ * neither: userinfo holds them outright (`https://user:pass@host/…`), and a
+ * presigned object-storage url puts a bearer-equivalent token in the query
+ * string. Scheme, host, port and path say WHICH fetch failed, which is the
+ * whole job of the message.
+ *
+ * A query string that was present is marked rather than dropped silently —
+ * "there was one, and it is not shown" is a different fact from "there was
+ * none". Matches `Media::safeUrl()` in the PHP reference.
+ */
+function safeUrl(url: string): string {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    return '[unreadable url]';
+  }
+
+  return `${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search === '' ? '' : '?[redacted]'}`;
 }
