@@ -1,7 +1,7 @@
 export { Prism } from './prism.js';
 
-export { PrismError } from './errors.js';
-export type { PrismErrorCode, PrismErrorOptions } from './errors.js';
+export { PrismError, PrismUrlRefused } from './errors.js';
+export type { PrismErrorCode, PrismErrorOptions, UrlRefusalCode } from './errors.js';
 
 export { FinishReason, StructuredMode, ToolChoice, finishReasonFromValue, toolChoiceFromName } from './enums.js';
 
@@ -122,6 +122,8 @@ export { buildModerationBody, parseModerationResponse } from './providers/openai
 
 export { Media, guessMimeType } from './value-objects/media/media.js';
 export type { MediaKind } from './value-objects/media/media.js';
+export type { PublicFetchOptions } from './value-objects/media/media.js';
+export type { HostResolver } from './internal/public-url.js';
 export { Image } from './value-objects/media/image.js';
 export { Audio } from './value-objects/media/audio.js';
 export { Document } from './value-objects/media/document.js';

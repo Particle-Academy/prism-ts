@@ -8,7 +8,15 @@
  * stable and `PrismError.message` as free to change in any release.
  */
 
+export type UrlRefusalCode =
+  | 'scheme_not_allowed'
+  | 'private_address_refused'
+  | 'host_did_not_resolve'
+  | 'redirect_refused'
+  | 'too_many_redirects';
+
 export type PrismErrorCode =
+  | UrlRefusalCode
   /** `prompt` and `messages` were both set on the same pending request. */
   | 'prompt_and_messages'
   /** The provider stopped because it ran out of output tokens. */
@@ -211,5 +219,13 @@ export class PrismError extends Error {
       'canonical_json_unencodable',
       `Cannot canonically encode ${typeof value} at ${path}: JSON.stringify would drop or rewrite it. Use an explicit null if the key should carry null, or omit the key entirely.`,
     );
+  }
+}
+
+/** A public-media fetch refusal; the code is stable and the message is not. */
+export class PrismUrlRefused extends PrismError {
+  constructor(override readonly code: UrlRefusalCode, message: string) {
+    super(code, message);
+    this.name = 'PrismUrlRefused';
   }
 }

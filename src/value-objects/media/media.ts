@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import type { JsonObject } from '../../json.js';
-import { PrismError } from '../../errors.js';
+import { PrismError, PrismUrlRefused } from '../../errors.js';
+import { assertPublicUrl, dnsHostResolver } from '../../internal/public-url.js';
+import type { HostResolver } from '../../internal/public-url.js';
+
+export interface PublicFetchOptions {
+  resolver?: HostResolver;
+  /** Number of redirect hops allowed after the initial request. Default: 5. */
+  maxRedirects?: number;
+}
 
 /** The kinds of payload a message part can be, minus text. */
 export type MediaKind = 'image' | 'audio' | 'document' | 'video';
@@ -241,6 +249,57 @@ export abstract class Media {
     );
 
     return this;
+  }
+
+  /**
+   * Opt-in URL guard: check the literal and all DNS answers before each hop.
+   * Redirects are followed manually so their destinations are checked too.
+   * DNS resolution is not pinned to the connection; this is not a sandbox.
+   */
+  async fetchPublic(options: PublicFetchOptions = {}): Promise<this> {
+    if (this.url === null) {
+      throw PrismError.unfetchableMedia('this payload has no url');
+    }
+    const maxRedirects = options.maxRedirects ?? 5;
+    if (!Number.isSafeInteger(maxRedirects) || maxRedirects < 0) {
+      throw new RangeError('maxRedirects must be a nonnegative safe integer.');
+    }
+    const resolver = options.resolver ?? dnsHostResolver;
+    let url = this.url;
+    for (let hop = 0; hop <= maxRedirects; hop++) {
+      try {
+        await assertPublicUrl(url, resolver);
+      } catch (error) {
+        if (hop > 0 && error instanceof PrismUrlRefused) {
+          throw new PrismUrlRefused('redirect_refused', `${safeUrl(this.url)} redirected to a refused destination.`);
+        }
+        throw error;
+      }
+      const response = await globalThis.fetch(url, { redirect: 'manual' });
+      const location = response.headers.get('location');
+      if (response.status >= 300 && response.status < 400 && location !== null && location !== '') {
+        // We do not consume redirect bodies; release their transport before
+        // following another hop or refusing the redirect chain.
+        await response.body?.cancel();
+        if (hop === maxRedirects) {
+          throw new PrismUrlRefused('too_many_redirects', `${safeUrl(this.url)} redirected more than ${maxRedirects} times.`);
+        }
+        try {
+          url = new URL(location, url).href;
+        } catch {
+          throw new PrismUrlRefused('redirect_refused', `${safeUrl(this.url)} redirected to an invalid URL.`);
+        }
+        continue;
+      }
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw PrismError.unfetchableMedia(`${safeUrl(url)} responded ${response.status}`);
+      }
+      this.setRawContent(new Uint8Array(await response.arrayBuffer()), this.#mimeType ?? response.headers.get('content-type'));
+      return this;
+    }
+    // Every redirect at the bound throws above; this is unreachable.
+    throw new PrismUrlRefused('too_many_redirects', 'The guarded fetch exhausted its redirect bound.');
   }
 
   /**

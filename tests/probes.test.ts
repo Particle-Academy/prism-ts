@@ -111,6 +111,8 @@ describe('the corpus itself', () => {
       // this pin asserts what the corpus SHIPS, not what this runner passes.
       // Dropping it here would hide a whole suite arriving unnoticed.
       'anthropic-text-response',
+      // Shipped derivation suite; its seven TS rows remain explicitly G-64-skipped.
+      'cache-stability-hints',
       'json-container-identity',
       // Media's stored form, driven through this runner's media arm (G-53).
       'media-roundtrip',
