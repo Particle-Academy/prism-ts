@@ -9,6 +9,7 @@ interface FetchCase {
   resolves: Record<string, string[]>;
   guarded?: boolean;
   redirects_to?: string;
+  redirects_always?: boolean;
   refusal: { php: string | null; ts: string | null; py: string | null };
   skipped: boolean;
 }
@@ -36,14 +37,22 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the media-fetch-guard corpus', () => {
-  it('retains all eleven rows and both controls', () => {
+  it('retains all twelve rows and both controls', () => {
     expect(cases.map(row => row.id)).toEqual(
-      Array.from({ length: 11 }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
+      Array.from({ length: 12 }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
     );
     expect(cases.every(row => row.skipped === false)).toBe(true);
     expect(cases.filter(row => row.refusal.php === null).map(row => row.id))
       .toEqual(['url-0001', 'url-0009']);
     expect(cases.find(row => row.id === 'url-0009')?.guarded).toBe(false);
+    for (const row of cases) {
+      if (row.redirects_always !== undefined) expect(typeof row.redirects_always).toBe('boolean');
+      if (row.redirects_always === true) {
+        expect(typeof row.redirects_to).toBe('string');
+        expect(row.redirects_to).not.toBe('');
+        expect(row.guarded).not.toBe(false);
+      }
+    }
   });
 
   it.each(cases)('$id agrees with PHP and sends only permitted requests ($title)', async row => {
@@ -51,7 +60,7 @@ describe('the media-fetch-guard corpus', () => {
     // Fresh fake per row: a previous control must not swallow this redirect.
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       sent.push(url);
-      if (row.redirects_to !== undefined && url !== row.redirects_to) {
+      if (row.redirects_to !== undefined && (row.redirects_always === true || url !== row.redirects_to)) {
         return new Response(null, { status: 302, headers: { location: row.redirects_to } });
       }
       return new Response(png, { headers: { 'content-type': 'image/png' } });
@@ -71,6 +80,10 @@ describe('the media-fetch-guard corpus', () => {
       expect(sent).toEqual([row.url]);
       expect(image.rawContent()).toEqual(new Uint8Array(png));
       expect(image.mimeType()).toBe('image/png');
+    } else if (row.redirects_always === true) {
+      // Six public requests pin the default allowance to five redirect hops.
+      expect(sent).toEqual(Array.from({ length: 6 }, () => row.url));
+      expect(image.hasRawContent()).toBe(false);
     } else if (row.redirects_to !== undefined) {
       expect(sent).toEqual([row.url]);
       expect(sent).not.toContain(row.redirects_to);
