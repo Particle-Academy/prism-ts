@@ -53,7 +53,7 @@ contract and will change; the code will not.
 npm install @particle-academy/prism
 ```
 
-Node 20 or newer.
+Node 22 or newer.
 
 ## Usage
 
