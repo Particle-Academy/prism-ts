@@ -52,6 +52,55 @@ describe('structured output', () => {
     expect(response.text).toBe('{"name":"Ada"}');
   });
 
+  // prism#83 / prism-ts#7. The prefix list stopped at gpt-5 and o3-mini, so
+  // OpenAI's current flagships silently got json_object, where the schema is
+  // not enforced.
+  it.each([
+    'gpt-6-sol',
+    'gpt-6-luna',
+    'gpt-6-astra',
+    'gpt-6.1-sol',
+    'gpt-7',
+    'gpt-10-mini',
+    'o1',
+    'o1-pro',
+    'o3',
+    'o3-pro',
+    'o4-mini',
+    'o5',
+    'ft:gpt-6-sol:my-org:custom-name:abc123',
+  ])('asks %s to enforce the schema', async (model) => {
+    const { transport, calls } = transportReturning('{"name":"Ada"}');
+
+    await Prism.structured()
+      .using('openai', model, { apiKey: 'sk-test', transport })
+      .withSchema(SCHEMA)
+      .withPrompt('Who?')
+      .asStructured();
+
+    expect(JSON.parse(calls[0]?.body ?? '{}').text.format.type).toBe('json_schema');
+  });
+
+  // A family pattern must not swallow names that only look like one.
+  it.each([
+    'gpt-image-1',
+    'gpt-realtime-2.1',
+    'gpt-4',
+    'gpt-3.5-turbo-0125',
+    'omni-moderation-latest',
+    'ollama-llama3',
+  ])('keeps json mode for %s', async (model) => {
+    const { transport, calls } = transportReturning('{"name":"Ada"}');
+
+    await Prism.structured()
+      .using('openai', model, { apiKey: 'sk-test', transport })
+      .withSchema(SCHEMA)
+      .withPrompt('Who?')
+      .asStructured();
+
+    expect(JSON.parse(calls[0]?.body ?? '{}').text.format).toEqual({ type: 'json_object' });
+  });
+
   it('falls back to json mode for a model that cannot enforce a schema', async () => {
     const { transport, calls } = transportReturning('{"name":"Ada"}');
 
