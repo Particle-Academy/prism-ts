@@ -186,4 +186,42 @@ describe('the opt-in guarded media fetch', () => {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }
   });
+  // G-89. Every spelling below was ADMITTED by all three languages, so no
+  // cross-language comparison could see it. CGNAT holds Alibaba Cloud's metadata
+  // endpoint, and NAT64/6to4 addresses are 169.254.169.254 written in IPv6.
+  const nonPublic = [
+    '100.100.100.200', '100.64.0.1', '192.0.0.170', '192.0.2.1', '198.18.0.1',
+    '198.51.100.1', '203.0.113.1', '224.0.0.1', '64:ff9b::a9fe:a9fe', '64:ff9b::169.254.169.254', '64:ff9b::7f00:1',
+    '64:ff9b:1::a9fe:a9fe', '2002:a9fe:a9fe::', '2002:a00:5::1',
+    '2001:0:4136:e378:8000:63bf:3fff:fdd2', '2001:db8::1', '100::1', 'fec0::1', 'ff02::1',
+    '::ffff:7f00:1', '::7f00:1',
+  ];
+
+  it.each(nonPublic)('refuses the literal %s', async (address) => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const host = address.includes(':') ? `[${address}]` : address;
+    await expect(Image.fromUrl(`http://${host}/x.png`).fetchPublic({ resolver: publicResolver }))
+      .rejects.toMatchObject({ code: 'private_address_refused' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(nonPublic)('refuses the DNS answer %s', async (address) => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await expect(Image.fromUrl('http://evil.test/x.png').fetchPublic({ resolver: { resolve: () => [address] } }))
+      .rejects.toMatchObject({ code: 'private_address_refused' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // The controls. An IPv6-only host behind DNS64 is TOLD 64:ff9b:: addresses for
+  // public sites, so refusing NAT64 outright would break every fetch there.
+  it.each(['8.8.8.8', '64:ff9b::808:808', '2002:808:808::1', '2606:4700:4700::1111'])(
+    'still fetches through the public answer %s', async (address) => {
+      const fetch = vi.fn(async () => new Response('image', { headers: { 'content-type': 'image/png' } }));
+      vi.stubGlobal('fetch', fetch);
+      const image = Image.fromUrl('https://public.test/x.png');
+      expect(await image.fetchPublic({ resolver: { resolve: () => [address] } })).toBe(image);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
 });
