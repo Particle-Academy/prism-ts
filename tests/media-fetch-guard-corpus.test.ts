@@ -37,13 +37,13 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the media-fetch-guard corpus', () => {
-  it('retains all twelve rows and both controls', () => {
+  it('retains all seventeen rows and all three controls', () => {
     expect(cases.map(row => row.id)).toEqual(
-      Array.from({ length: 12 }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
+      Array.from({ length: 17 }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
     );
     expect(cases.every(row => row.skipped === false)).toBe(true);
     expect(cases.filter(row => row.refusal.php === null).map(row => row.id))
-      .toEqual(['url-0001', 'url-0009']);
+      .toEqual(['url-0001', 'url-0009', 'url-0017']);
     expect(cases.find(row => row.id === 'url-0009')?.guarded).toBe(false);
     for (const row of cases) {
       if (row.redirects_always !== undefined) expect(typeof row.redirects_always).toBe('boolean');
