@@ -13,7 +13,9 @@ export type UrlRefusalCode =
   | 'private_address_refused'
   | 'host_did_not_resolve'
   | 'redirect_refused'
-  | 'too_many_redirects';
+  | 'too_many_redirects'
+  /** The answer was larger than `maxBytes` (G-90). */
+  | 'media_too_large';
 
 export type PrismErrorCode =
   | UrlRefusalCode

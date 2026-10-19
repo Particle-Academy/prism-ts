@@ -224,4 +224,41 @@ describe('the opt-in guarded media fetch', () => {
       expect(await image.fetchPublic({ resolver: { resolve: () => [address] } })).toBe(image);
       expect(fetch).toHaveBeenCalledTimes(1);
     });
+  // G-90. The URL is one the caller does not trust, so the size of its answer is
+  // not theirs to choose either. Refused while streaming: an ENDLESS body must be
+  // refused, which a read-it-all-then-check guard would never return from.
+  it('refuses an endless body at the cap instead of reading it forever', async () => {
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) { pulled += 1; controller.enqueue(new Uint8Array(1024)); },
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(endless, { headers: { 'content-type': 'image/png' } })));
+    await expect(Image.fromUrl('https://public.test/x.png').fetchPublic({ resolver: publicResolver, maxBytes: 4096 }))
+      .rejects.toMatchObject({ code: 'media_too_large' });
+    expect(pulled).toBeLessThan(16);
+  });
+
+  it('refuses a declared content-length over the cap before reading the body', async () => {
+    const cancel = vi.fn();
+    // highWaterMark 0: a stream otherwise pulls eagerly to fill its buffer, before anyone reads.
+    const body = new ReadableStream<Uint8Array>({ pull() { throw new Error('the body must not be read'); }, cancel }, { highWaterMark: 0 });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { headers: { 'content-length': '999999999' } })));
+    await expect(Image.fromUrl('https://public.test/x.png').fetchPublic({ resolver: publicResolver, maxBytes: 4096 }))
+      .rejects.toMatchObject({ code: 'media_too_large' });
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('accepts a body exactly at the cap (the control)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(4096), { headers: { 'content-type': 'image/png' } })));
+    const image = Image.fromUrl('https://public.test/x.png');
+    expect(await image.fetchPublic({ resolver: publicResolver, maxBytes: 4096 })).toBe(image);
+    expect(image.hasRawContent()).toBe(true);
+  });
+
+  it('caps at 32 MiB by default', async () => {
+    const big = new Uint8Array(32 * 1024 * 1024 + 1);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(big)));
+    await expect(Image.fromUrl('https://public.test/x.png').fetchPublic({ resolver: publicResolver }))
+      .rejects.toMatchObject({ code: 'media_too_large' });
+  });
 });

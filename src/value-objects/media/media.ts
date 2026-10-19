@@ -9,6 +9,11 @@ export interface PublicFetchOptions {
   resolver?: HostResolver;
   /** Number of redirect hops allowed after the initial request. Default: 5. */
   maxRedirects?: number;
+  /**
+   * The largest body accepted, in bytes. Default: 32 MiB, the largest inline document the providers take. Refused with
+   * `media_too_large` while the body streams, so an oversized answer is never held whole (G-90).
+   */
+  maxBytes?: number;
 }
 
 /** The kinds of payload a message part can be, minus text. */
@@ -264,6 +269,10 @@ export abstract class Media {
     if (!Number.isSafeInteger(maxRedirects) || maxRedirects < 0) {
       throw new RangeError('maxRedirects must be a nonnegative safe integer.');
     }
+    const maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+      throw new RangeError('maxBytes must be a nonnegative safe integer.');
+    }
     const resolver = options.resolver ?? dnsHostResolver;
     let url = this.url;
     for (let hop = 0; hop <= maxRedirects; hop++) {
@@ -295,7 +304,7 @@ export abstract class Media {
         await response.body?.cancel();
         throw PrismError.unfetchableMedia(`${safeUrl(url)} responded ${response.status}`);
       }
-      this.setRawContent(new Uint8Array(await response.arrayBuffer()), this.#mimeType ?? response.headers.get('content-type'));
+      this.setRawContent(await boundedBody(response, maxBytes, safeUrl(url)), this.#mimeType ?? response.headers.get('content-type'));
       return this;
     }
     // Every redirect at the bound throws above; this is unreachable.
@@ -431,4 +440,38 @@ function safeUrl(url: string): string {
   }
 
   return `${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search === '' ? '' : '?[redacted]'}`;
+}
+
+/**
+ * The body, read chunk by chunk and refused the moment it passes `maxBytes`, so an oversized answer is never held
+ * whole. A declared content-length over the cap is refused before anything is read. The URL was one the caller does
+ * not trust, so the size of its answer is not theirs to choose either (G-90).
+ */
+async function boundedBody(response: Response, maxBytes: number, label: string): Promise<Uint8Array> {
+  const declared = response.headers.get('content-length');
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > maxBytes) {
+    await response.body?.cancel();
+    throw new PrismUrlRefused('media_too_large', `${label} declares ${declared} bytes, over the ${maxBytes}-byte cap.`);
+  }
+  if (response.body === null) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new PrismUrlRefused('media_too_large', `${label} sent more than the ${maxBytes}-byte cap.`);
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
