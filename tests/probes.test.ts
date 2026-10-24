@@ -118,6 +118,8 @@ describe('the corpus itself', () => {
       'media-roundtrip',
       'openai-text-request',
       'openai-text-response',
+      'openrouter-billing-response',
+      'provider-replay-request',
       'value-object-roundtrip',
       'text-errors',
     ].sort());

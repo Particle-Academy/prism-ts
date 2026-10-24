@@ -48,6 +48,7 @@ export type { OpenAIConfig } from './providers/openai/openai.js';
 // The seams a conformance runner needs: build a body without sending it, and
 // parse a stored payload without a network.
 export { buildRequestBody, buildTools } from './providers/openai/build-request-body.js';
+export { buildRequestBody as buildAnthropicRequestBody } from './providers/anthropic/build-request-body.js';
 export { parseTextResponse } from './providers/openai/parse-response.js';
 // Named for its provider, because the unqualified `parseTextResponse` above
 // is OpenAI's. A conformance runner has to be able to ask for a SPECIFIC

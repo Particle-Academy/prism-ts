@@ -14,6 +14,13 @@ wire, and what comes back, is identical.
 
 ## Scope
 
+Stored assistant messages retain provider replay state in `additionalContent`:
+OpenAI Responses uses `output_items`; Anthropic uses ordered `content_blocks`,
+with `thinking_blocks` as a fallback. Keep that metadata when sending history
+back. Signatures, redacted thinking and encrypted reasoning remain opaque and
+unchanged; avoid logging these values. The legacy thinking/signature pair still
+works when full replay metadata is absent.
+
 **Every capability the reference has**, and three of its eighteen providers.
 That is the shape of the remaining drift: one axis, not two.
 

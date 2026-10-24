@@ -21,6 +21,7 @@ import type { ProviderRateLimit } from '../../value-objects/provider-rate-limit.
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
 import { lastOutputItem, mapFinishReason } from './maps/finish-reason-map.js';
+import { responseReplayItems } from './replay.js';
 
 export interface ParseTextResponseOptions {
   rateLimits?: readonly ProviderRateLimit[];
@@ -90,6 +91,7 @@ function buildStep(
   const usage = readObject(data.usage) ?? {};
   const inputTokenDetails = readObject(usage.input_tokens_details) ?? {};
   const outputTokenDetails = readObject(usage.output_tokens_details) ?? {};
+  const replay = responseReplayItems(output);
 
   return new TextStep({
     text: outputText(data),
@@ -119,6 +121,7 @@ function buildStep(
       reasoningSummaries: reasoningSummaries(output),
       generatedImages: generatedImages(output),
       imageGenerationCalls: imageGenerationCalls(output),
+      output_items: replay.length > 0 ? replay : null,
     }),
     raw: data,
   });
