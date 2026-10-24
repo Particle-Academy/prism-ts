@@ -5,6 +5,7 @@ import type { AssistantMessage, Message, SystemMessage, ToolResultMessage } from
 import type { ToolCall } from '../../../value-objects/tool-call.js';
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
 import { mapDocument, mapImage } from './media-map.js';
+import { replayableItems } from '../replay.js';
 
 /**
  * Map messages onto the Responses API's flat `input` array.
@@ -61,6 +62,11 @@ export function mapMessages(
 }
 
 function mapAssistantMessage(message: AssistantMessage, items: JsonValue[]): void {
+  const replay = message.additionalContent.output_items;
+  if (Array.isArray(replay) && replay.length > 0) {
+    items.push(...replayableItems(replay));
+    return;
+  }
   if (message.toolCalls.length > 0) {
     for (const [reasoningId, toolCalls] of groupByReasoningId(message.toolCalls)) {
       const first = toolCalls[0];

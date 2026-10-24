@@ -20,6 +20,7 @@ import type { ProviderRateLimit } from '../../value-objects/provider-rate-limit.
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
 import { mapFinishReason } from './maps/finish-reason-map.js';
+import { responseContentBlocks, thinkingBlocks } from './replay.js';
 
 export interface ParseTextResponseOptions {
   rateLimits?: readonly ProviderRateLimit[];
@@ -105,6 +106,7 @@ function buildStep(
   rateLimits: readonly ProviderRateLimit[],
 ): TextStep {
   const content = readArray(data.content);
+  const replay = responseContentBlocks(content, data.stop_reason === 'pause_turn');
   const usage = readObject(data.usage) ?? {};
 
   return new TextStep({
@@ -130,7 +132,9 @@ function buildStep(
     messages: request.messages(),
     systemPrompts: request.systemPrompts(),
     additionalContent: whereNotNull({
-      ...thinking(content),
+      ...thinking(replay),
+      content_blocks: Array.isArray(data.content) ? replay : null,
+      stop_reason: data.stop_reason ?? null,
       stopSequence: typeof data.stop_sequence === 'string' ? data.stop_sequence : null,
     }),
     raw: data,
@@ -174,13 +178,16 @@ function mapToolCalls(content: readonly JsonValue[]): ToolCall[] {
  * The signature is what lets the block be sent back on a later tool-use turn
  * (G-57). It covers one block's text exactly, so the text kept beside it is that
  * block's, not every block joined: joined text under one signature is a block
- * Anthropic would refuse. A response with more than one thinking block keeps only
- * the first, in all three languages.
+ * Anthropic would refuse. The convenience pair describes the first thinking
+ * block; thinking_blocks retains every signed or redacted block for replay.
  */
-function thinking(content: readonly JsonValue[]): { thinking: string | null; thinking_signature: string | null } {
-  const block = content.filter(isJsonObject).find((candidate) => candidate.type === 'thinking');
+function thinking(content: readonly JsonValue[]): JsonObject {
+  const blocks = thinkingBlocks(content);
+  if (blocks.length === 0) return {};
+  const block = blocks.find((candidate) => candidate.type === 'thinking');
 
   return {
+    thinking_blocks: blocks,
     thinking: typeof block?.thinking === 'string' ? block.thinking : null,
     thinking_signature: typeof block?.signature === 'string' ? block.signature : null,
   };

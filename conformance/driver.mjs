@@ -193,7 +193,9 @@ export function pending(lib, script) {
 }
 
 function buildBody(lib, request, probe) {
-  return mutate(probe, 'requestBody', lib.buildRequestBody(request), { lib, request });
+  const body = request.provider() === 'anthropic'
+    ? lib.buildAnthropicRequestBody(request) : lib.buildRequestBody(request);
+  return mutate(probe, 'requestBody', body, { lib, request });
 }
 
 function rehydrate(lib, tag, object, probe) {

@@ -4,6 +4,7 @@ import { PrismError } from '../../../errors.js';
 import type { AssistantMessage, Message, SystemMessage, ToolResultMessage } from '../../../value-objects/messages/index.js';
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
 import { mapDocument, mapImage } from './media-map.js';
+import { replayContentBlocks } from '../replay.js';
 
 /**
  * Map messages onto Anthropic's `messages` array.
@@ -73,13 +74,21 @@ export function mapSystem(systemPrompts: readonly SystemMessage[]): string | nul
 }
 
 function mapAssistantMessage(message: AssistantMessage, items: JsonObject[]): void {
+  const replay = message.additionalContent.content_blocks;
+  if (Array.isArray(replay)) {
+    const content = replayContentBlocks(replay);
+    if (content.length > 0) items.push({ role: 'assistant', content });
+    return;
+  }
   const content: JsonValue[] = [];
   const { thinking, thinking_signature: signature } = message.additionalContent;
 
   // The thinking block goes back FIRST, with its signature. Anthropic requires
   // it on a tool-use turn with thinking on, and refuses a thinking block that
   // has no signature, so without both it is left out (G-57).
-  if (typeof thinking === 'string' && typeof signature === 'string') {
+  if (Array.isArray(message.additionalContent.thinking_blocks)) {
+    content.push(...message.additionalContent.thinking_blocks);
+  } else if (typeof thinking === 'string' && typeof signature === 'string') {
     content.push({ type: 'thinking', thinking, signature });
   }
 

@@ -349,10 +349,14 @@ describe('Anthropic provider', () => {
 
       expect(first.additionalContent).toMatchObject({ thinking: 'first', thinking_signature: 'sig-1' });
 
+      // This pins legacy pair replay; replay-metadata.test.ts covers the full stored blocks.
       await pending()
         .withMessages([
           new UserMessage('Weather?'),
-          new AssistantMessage('Checking.', [new ToolCall('toolu_1', 'weather', { city: 'Detroit' })], first.additionalContent),
+          new AssistantMessage('Checking.', [new ToolCall('toolu_1', 'weather', { city: 'Detroit' })], {
+            thinking: first.additionalContent.thinking ?? null,
+            thinking_signature: first.additionalContent.thinking_signature ?? null,
+          }),
           new ToolResultMessage([new ToolResult('toolu_1', 'weather', { city: 'Detroit' }, 'Sunny')]),
         ])
         .asText();

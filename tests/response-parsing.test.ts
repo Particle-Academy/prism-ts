@@ -67,7 +67,7 @@ describe('parseTextResponse', () => {
 
     expect(response.steps).toHaveLength(1);
     expect(response.steps[0]?.raw).toEqual(completed());
-    expect(response.steps[0]?.additionalContent).toEqual({ reasoningSummaries: [] });
+    expect(response.steps[0]?.additionalContent).toEqual({ reasoningSummaries: [], output_items: completed().output });
   });
 
   it('falls back to empty text when the last output item carries none', () => {
@@ -127,6 +127,7 @@ describe('parseTextResponse', () => {
       searchQueries: ['prism'],
       openPageUrls: ['https://example.com'],
       reasoningSummaries: ['considering'],
+      output_items: (payload.output as JsonObject[]).filter((item) => item.type !== 'web_search_call'),
     });
   });
 
