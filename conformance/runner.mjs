@@ -174,7 +174,7 @@ async function main() {
     process.exit(EXIT_CANNOT_START);
   }
 
-  const documents = driver.runCorpus({ lib, corpus, suiteIds, probe });
+  const documents = await driver.runCorpus({ lib, corpus, suiteIds, probe });
 
   writeOut(JSON.stringify(documents.length === 1 ? documents[0] : documents));
 

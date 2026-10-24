@@ -6,6 +6,7 @@
 
 import { compare } from '@particle-academy/prism-conformance';
 import { mutate, mutateRehydration } from './mutations.mjs';
+import { parseStream, violations } from './stream.mjs';
 
 /**
  * Typed at the boundary so the probe test — which is TypeScript — gets real
@@ -221,8 +222,20 @@ function rehydrate(lib, tag, object, probe) {
  * correctly and rebuilds wrong is exactly the defect this corpus exists to
  * catch, and hiding it behind its own status would let it be filtered out.
  */
-function evaluate(lib, manifest, testCase, probe) {
+async function evaluate(lib, manifest, testCase, probe) {
   switch (manifest.kind) {
+    case 'stream-parse': {
+      if (manifest.comparison.mode !== 'stream-properties' || manifest.comparison.exact_trace_gap !== 'G-125') {
+        throw new Error('Stream property comparison requires the explicit G-125 trace divergence.');
+      }
+      const trace = await parseStream(lib, testCase);
+      const actual = lib.canonicalJson(trace);
+      const match = actual === testCase.expect.result_json;
+      return {
+        expected: '[]', actual: lib.canonicalJson(violations(trace, testCase.properties)),
+        traceComparison: { status: match ? 'match' : 'known-divergence', gap: match ? null : 'G-125', expected: testCase.expect.result_json, actual },
+      };
+    }
     case 'request-payload': {
       const request = pending(lib, testCase.builder).toRequest();
 
@@ -299,9 +312,9 @@ function evaluate(lib, manifest, testCase, probe) {
  * Run one suite, returning a row for EVERY case including the skipped ones.
  *
  * @param {{ lib: Library, suite: Suite, probe?: string, language?: Language }} options
- * @returns {CaseResult[]}
+ * @returns {Promise<CaseResult[]>}
  */
-export function runSuite({ lib, suite, probe = 'faithful', language = LANGUAGE }) {
+export async function runSuite({ lib, suite, probe = 'faithful', language = LANGUAGE }) {
   /** @type {CaseResult[]} */
   const results = [];
 
@@ -315,21 +328,22 @@ export function runSuite({ lib, suite, probe = 'faithful', language = LANGUAGE }
     let outcome;
 
     try {
-      outcome = evaluate(lib, suite.manifest, testCase, probe);
+      outcome = await evaluate(lib, suite.manifest, testCase, probe);
     } catch (error) {
       results.push({ id: testCase.id, status: 'fail', reason: `threw: ${error?.message ?? String(error)}` });
 
       continue;
     }
 
+    const traceDetails = outcome.traceComparison === undefined ? {} : { trace_comparison: outcome.traceComparison };
     if (!compare(outcome.expected, outcome.actual, testCase.tolerance)) {
-      results.push({ id: testCase.id, status: 'fail', expected: outcome.expected, actual: outcome.actual });
+      results.push({ id: testCase.id, status: 'fail', expected: outcome.expected, actual: outcome.actual, ...traceDetails });
 
       continue;
     }
 
     if (outcome.secondary === undefined) {
-      results.push({ id: testCase.id, status: 'pass' });
+      results.push({ id: testCase.id, status: 'pass', ...traceDetails });
 
       continue;
     }
@@ -358,11 +372,11 @@ export function runSuite({ lib, suite, probe = 'faithful', language = LANGUAGE }
  * Run every requested suite and return one report document per suite.
  *
  * @param {{ lib: Library, corpus: Corpus, suiteIds?: string[], probe?: string, language?: Language }} options
- * @returns {ReportDocument[]}
+ * @returns {Promise<ReportDocument[]>}
  */
-export function runCorpus({ lib, corpus, suiteIds, probe = 'faithful', language = LANGUAGE }) {
-  return (suiteIds ?? corpus.suiteIds())
-    .filter((suiteId) => {
+export async function runCorpus({ lib, corpus, suiteIds, probe = 'faithful', language = LANGUAGE }) {
+  const documents = [];
+  for (const suiteId of suiteIds ?? corpus.suiteIds()) {
       // A `security-corpus` suite is not run from here, and reporting nothing
       // for it is correct rather than a gap. Those suites have no `expect`:
       // each row records what every language PRODUCED, per language, and the
@@ -374,20 +388,20 @@ export function runCorpus({ lib, corpus, suiteIds, probe = 'faithful', language 
       // Named on stderr rather than skipped silently, for the same reason the
       // reference runner names it: a suite whose kind is a typo would otherwise
       // be run by nothing at all and report as fine.
-      if (corpus.suite(suiteId).manifest.kind !== 'security-corpus') return true;
-
-      process.stderr.write(`${suiteId}: security-corpus, run in the family's own repos — not from here.\n`);
-
-      return false;
-    })
-    .map((suiteId) => ({
+      if (corpus.suite(suiteId).manifest.kind === 'security-corpus') {
+        process.stderr.write(`${suiteId}: security-corpus, run in the family's own repos — not from here.\n`);
+        continue;
+      }
+    documents.push({
       corpus_version: corpus.version,
       corpus_digest: corpus.digest(),
       language,
       suite: suiteId,
       probe,
-      results: runSuite({ lib, suite: corpus.suite(suiteId), probe, language }),
-    }));
+      results: await runSuite({ lib, suite: corpus.suite(suiteId), probe, language }),
+    });
+  }
+  return documents;
 }
 
 /**

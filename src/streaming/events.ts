@@ -159,6 +159,7 @@ export class ErrorEvent extends StreamEvent {
     readonly message: string,
     id?: string,
     timestamp?: number,
+    readonly recoverable?: boolean,
   ) {
     super(id, timestamp);
   }
@@ -168,7 +169,7 @@ export class ErrorEvent extends StreamEvent {
   }
 
   toObject(): JsonObject {
-    return { ...this.base(), code: this.code, message: this.message };
+    return { ...this.base(), code: this.code, message: this.message, ...(this.recoverable === undefined ? {} : { recoverable: this.recoverable }) };
   }
 }
 

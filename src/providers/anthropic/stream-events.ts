@@ -36,6 +36,14 @@ export class AnthropicStreamMapper {
 
   #usage: Usage | null = null;
 
+  #messageStopped = false;
+
+  #failed = false;
+
+  #finished = false;
+
+  #finalUsageReported = false;
+
   /** Accumulated text and tool JSON, per content-block index. */
   readonly #blocks = new Map<number, { type: string; text: string; id: string; name: string }>();
 
@@ -65,12 +73,19 @@ export class AnthropicStreamMapper {
         return null;
 
       case 'message_stop':
-        return new StreamEndEvent(this.#finishReason(), this.#usage);
+        this.#messageStopped = true;
+
+        return null;
 
       case 'error':
+        this.#failed = true;
+
         return new ErrorEvent(
           readString(readObject(payload.error)?.type) || 'unknown_error',
           readString(readObject(payload.error)?.message) || 'The provider reported an error mid-stream.',
+          undefined,
+          undefined,
+          false,
         );
 
       default:
@@ -79,6 +94,27 @@ export class AnthropicStreamMapper {
         // a provider's additive change must not become an outage.
         return null;
     }
+  }
+
+  /** EOF is a terminal boundary even when the provider omitted message_stop. */
+  finish(): StreamEvent[] {
+    if (this.#finished) return [];
+    this.#finished = true;
+    const events: StreamEvent[] = [];
+
+    if (!this.#messageStopped && !this.#failed) {
+      this.#failed = true;
+      events.push(new ErrorEvent('incomplete_stream', 'The stream ended before Anthropic finished the message.', undefined, undefined, false));
+    }
+
+    for (const block of this.#blocks.values()) {
+      if (block.type === 'text') events.push(new TextCompleteEvent(block.text, this.#messageId));
+    }
+    // Unfinished tool JSON is discarded, never promoted into a completed call.
+    this.#blocks.clear();
+    events.push(new StreamEndEvent(this.#finishReason(), this.#finalUsageReported ? this.#usage : null));
+
+    return events;
   }
 
   #messageStart(payload: JsonObject): StreamEvent {
@@ -140,6 +176,8 @@ export class AnthropicStreamMapper {
       return null;
     }
 
+    this.#blocks.delete(readNumber(payload.index));
+
     // Truthful because it was accumulated. Anthropic's `content_block_stop`
     // carries no text of its own, so emitting a complete event without the
     // memory above would mean emitting an empty one.
@@ -160,6 +198,7 @@ export class AnthropicStreamMapper {
     const tokens = readObject(payload.usage);
 
     if (tokens !== null) {
+      if (typeof tokens.output_tokens === 'number') this.#finalUsageReported = true;
       // Rebuilt rather than mutated, so everything not restated here would be
       // LOST. Prompt tokens were already carried forward for that reason; cache
       // and thinking counts arrive at message_start and never again, so they
@@ -177,6 +216,8 @@ export class AnthropicStreamMapper {
   }
 
   #finishReason(): FinishReason {
+    if (this.#failed) return FinishReason.Error;
+
     return this.#stopReason.stop_reason === undefined ? FinishReason.Stop : mapFinishReason(this.#stopReason);
   }
 }

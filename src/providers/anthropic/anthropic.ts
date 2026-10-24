@@ -128,6 +128,8 @@ export class Anthropic extends Provider {
         yield event;
       }
     }
+
+    yield* mapper.finish();
   }
 
   /**
