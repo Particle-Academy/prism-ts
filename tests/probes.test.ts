@@ -67,8 +67,8 @@ function flatten(failures: Record<string, string[]>): string[] {
     .sort();
 }
 
-function observe(probeId: string): string[] {
-  return flatten(failuresBySuite(runCorpus({ lib, corpus, probe: probeId, language: LANGUAGE })));
+async function observe(probeId: string): Promise<string[]> {
+  return flatten(failuresBySuite(await runCorpus({ lib, corpus, probe: probeId, language: LANGUAGE })));
 }
 
 function expectation(probe: Probe): string[] {
@@ -111,6 +111,7 @@ describe('the corpus itself', () => {
       // this pin asserts what the corpus SHIPS, not what this runner passes.
       // Dropping it here would hide a whole suite arriving unnoticed.
       'anthropic-text-response',
+      'anthropic-text-stream',
       // Shipped derivation suite; its seven TS rows remain explicitly G-64-skipped.
       'cache-stability-hints',
       'json-container-identity',
@@ -138,12 +139,12 @@ describe('the faithful control', () => {
    * Not optional. Without an implementation that passes everything, the mutants
    * prove only that the port is broken.
    */
-  it('fails nothing, in any suite', () => {
-    expect(observe('faithful')).toEqual([]);
+  it('fails nothing, in any suite', async () => {
+    expect(await observe('faithful')).toEqual([]);
   });
 
-  it('reports every case in the corpus, skips included', () => {
-    const documents = runCorpus({ lib, corpus, probe: 'faithful', language: LANGUAGE });
+  it('reports every case in the corpus, skips included', async () => {
+    const documents = await runCorpus({ lib, corpus, probe: 'faithful', language: LANGUAGE });
 
     for (const document of documents) {
       const suite = corpus.suite(document.suite);
@@ -163,17 +164,17 @@ describe('the faithful control', () => {
 
 describe('discrimination probes', () => {
   for (const probe of probes.filter((candidate) => candidate.kind === 'mutant')) {
-    it(`${probe.id} fails exactly the declared set`, () => {
+    it(`${probe.id} fails exactly the declared set`, async () => {
       const expected = expectation(probe);
-      const observed = observe(probe.id);
+      const observed = await observe(probe.id);
 
       expect(difference(expected, observed)).toEqual({ missing: [], unexpected: [] });
     });
 
-    it(`${probe.id} fails something`, () => {
+    it(`${probe.id} fails something`, async () => {
       // A mutant that fails nothing is not a mutant; it means the defect was
       // never actually injected, and every other assertion about it is vacuous.
-      expect(observe(probe.id).length).toBeGreaterThan(0);
+      expect((await observe(probe.id)).length).toBeGreaterThan(0);
     });
   }
 });
