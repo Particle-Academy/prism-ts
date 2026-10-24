@@ -69,6 +69,9 @@ export function violations(trace, properties) {
   const ends = trace.events.filter(event => event.type === 'stream_end');
   const text = trace.events.filter(event => event.type === 'text_delta').map(event => event.payload.delta).join('');
   if (text !== properties.text) failed.push('text');
+  const starts = trace.events.filter(event => event.type === 'text_start');
+  const completes = trace.events.filter(event => event.type === 'text_complete');
+  if (starts.length !== completes.length || completes.map(event => event.payload.text).join('') !== properties.text) failed.push('text_completion');
   if (ends.length !== properties.terminal_events || trace.events.at(-1)?.type !== 'stream_end') failed.push('terminal_events');
   if (trace.terminal.status !== 'returned' || trace.requests !== 1) failed.push('native_execution');
   if (trace.events.some(event => event.type === 'error') !== properties.error_observable) failed.push('error_observable');
@@ -78,7 +81,7 @@ export function violations(trace, properties) {
   if (properties.no_completed_tools && trace.events.some(event => ['tool_call', 'tool_result'].includes(event.type))) failed.push('no_completed_tools');
   if (ends.length === 1) {
     const payload = ends[0].payload;
-    if (['Stop', 'stop'].includes(payload.finish_reason) !== properties.normal_completion) failed.push('normal_completion');
+    if (!(properties.normal_completion ? ['Stop', 'stop'] : ['Error', 'error']).includes(payload.finish_reason)) failed.push('normal_completion');
     if (Object.hasOwn(properties, 'usage_known') && (payload.usage != null) !== properties.usage_known) failed.push('usage_known');
     for (const [field, expected] of Object.entries(properties.final_usage ?? {})) {
       if (payload.usage?.[field] !== expected) failed.push(`final_usage.${field}`);
