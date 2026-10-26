@@ -335,6 +335,13 @@ export async function probeEcosystem() {
       () => SurfaceTrustPolicy.everyTool().assertAllows(new SurfaceToolDefinition('terminal_confirm ', '', {})),
       /reserved for the human|well-formed/,
     );
+    // G-130. The name rule admits `.`, `:` and `-`, and the reservation used to
+    // look for the verb only behind `_`, so `terminal.confirm` went to the
+    // agent in all three languages while the two probes above stayed green.
+    const humanOnlySeparator = await refuses(
+      () => SurfaceTrustPolicy.everyTool().assertAllows(new SurfaceToolDefinition('terminal.confirm', '', {})),
+      /reserved for the human/,
+    );
     // Cyrillic U+0441. It is not the reserved word, so the reservation
     // correctly does not fire — the refusal has to come from the name rule, or
     // an allowlist a human reads is lying to them.
@@ -351,6 +358,10 @@ export async function probeEcosystem() {
       message: 'as expected',
     });
     is('and still does when the SURFACE pads the name', humanOnlyPadded, {
+      refused: true,
+      message: 'as expected',
+    });
+    is('and when the SURFACE spells it with another separator', humanOnlySeparator, {
       refused: true,
       message: 'as expected',
     });
