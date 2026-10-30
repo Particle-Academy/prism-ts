@@ -2,7 +2,7 @@ import { isJsonObject, type JsonObject } from '../../json.js';
 import type { EmbeddingsRequest } from '../../embeddings/request.js';
 import { EmbeddingsResponse } from '../../embeddings/response.js';
 import { readNullableNumber, readNumber, readObject, readString } from '../../internal/filters.js';
-import { Embedding } from '../../value-objects/embedding.js';
+import { decodeEmbedding } from '../../internal/embedding-decoder.js';
 import { EmbeddingsUsage } from '../../value-objects/embeddings-usage.js';
 import { Meta } from '../../value-objects/meta.js';
 import { validateResponse } from './parse-response.js';
@@ -35,7 +35,7 @@ export function parseEmbeddingsResponse(rawBody: unknown): EmbeddingsResponse {
   const ordered = [...items].filter(isJsonObject).sort((a, b) => readNumber(a.index, 0) - readNumber(b.index, 0));
 
   return new EmbeddingsResponse({
-    embeddings: ordered.map((item) => Embedding.fromArray(Array.isArray(item.embedding) ? item.embedding : [])),
+    embeddings: ordered.map((item) => decodeEmbedding(item.embedding)),
     // Mistral reports `total_tokens` only. Null rather than 0 when it says
     // nothing, because zero tokens claims the call was free.
     usage: new EmbeddingsUsage(readNullableNumber((readObject(data.usage) ?? {}).total_tokens)),

@@ -2,7 +2,7 @@ import { isJsonObject, type JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
 import type { EmbeddingsRequest } from '../../embeddings/request.js';
 import { EmbeddingsResponse } from '../../embeddings/response.js';
-import { Embedding } from '../../value-objects/embedding.js';
+import { decodeEmbedding } from '../../internal/embedding-decoder.js';
 import { EmbeddingsUsage } from '../../value-objects/embeddings-usage.js';
 import { Meta } from '../../value-objects/meta.js';
 import { whereNotNull } from '../../internal/filters.js';
@@ -38,7 +38,7 @@ export function parseEmbeddingsResponse(rawBody: unknown): EmbeddingsResponse {
     .sort((a, b) => readNumber(a.index) - readNumber(b.index));
 
   return new EmbeddingsResponse({
-    embeddings: ordered.map((item) => Embedding.fromArray(Array.isArray(item.embedding) ? item.embedding : [])),
+    embeddings: ordered.map((item) => decodeEmbedding(item.embedding)),
     usage: new EmbeddingsUsage(readTokens(rawBody)),
     meta: new Meta(readString(rawBody.id), readString(rawBody.model)),
     raw: rawBody,

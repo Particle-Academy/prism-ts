@@ -41,6 +41,8 @@ export type PrismErrorCode =
   | 'unsupported_structured_model'
   /** An embeddings request reached `toRequest()` with no input. */
   | 'no_embedding_input'
+  /** A provider embedding is neither a vector nor canonical finite float32 base64. */
+  | 'invalid_embedding'
   /** `fromFile()` could not read the path it was given. */
   | 'unreadable_input_file'
   /** An images request reached `toRequest()` with no prompt. */
