@@ -57,6 +57,12 @@ export function hydrate(lib, value) {
   if (tag === 'ToolChoice') return lib.toolChoiceFromName(value.case);
   if (tag === 'Tool') return hydrateTool(lib, value);
   if (MEDIA.has(tag)) return hydrateMedia(lib, value);
+  if (tag === 'StringSchema') return new lib.StringSchema(value.name, value.description);
+  if (tag === 'ObjectSchema') {
+    return new lib.ObjectSchema(value.name, value.description, hydrate(lib, value.properties ?? []), {
+      requiredFields: value.requiredFields ?? [],
+    });
+  }
 
   const parameters = CONSTRUCTS[tag];
 
@@ -169,6 +175,28 @@ function hydrateTool(lib, spec) {
 function parseFor(lib, script) {
   const provider = script.find((step) => step.call === 'using')?.args?.[0];
 
+  if (script[0]?.call === 'structured') {
+    const providers = { openai: [lib.OpenAI, '/responses'], anthropic: [lib.Anthropic, '/messages'], mistral: [lib.Mistral, '/chat/completions'] };
+    const selected = providers[provider];
+    if (selected === undefined) throw new Error(`No structured response-parse handler for provider ${provider}.`);
+    return async (request, response) => {
+      let calls = 0;
+      const [Provider, endpoint] = selected;
+      const native = new Provider({ apiKey: 'conformance-only', url: 'https://conformance.invalid/v1',
+        transport: async (outbound) => {
+          calls += 1;
+          if (outbound.url !== `https://conformance.invalid/v1${endpoint}` || outbound.method !== 'POST') {
+            throw new Error('Unexpected structured fixture request.');
+          }
+          return { status: 200, headers: {}, body: response, rawBody: lib.canonicalJson(response) };
+        },
+      });
+      const parsed = await native.structured(request);
+      if (calls !== 1) throw new Error('The structured fixture must make exactly one request.');
+      return parsed;
+    };
+  }
+
   switch (provider) {
     case 'openai':
       return lib.parseTextResponse;
@@ -177,12 +205,17 @@ function parseFor(lib, script) {
     default:
       throw new Error(`No response-parse handler wired for provider ${provider}.`);
   }
+
 }
 
 export function pending(lib, script) {
-  let request = lib.Prism.text();
+  const structured = script?.[0]?.call === 'structured';
+  if (structured && (script[0].args ?? []).length !== 0) {
+    throw new Error('The structured factory takes no arguments.');
+  }
+  let request = structured ? lib.Prism.structured() : lib.Prism.text();
 
-  for (const step of script ?? []) {
+  for (const step of structured ? script.slice(1) : script ?? []) {
     if (typeof request[step.call] !== 'function') {
       throw new Error(`The port's builder has no method ${step.call}.`);
     }
@@ -244,7 +277,7 @@ async function evaluate(lib, manifest, testCase, probe) {
 
     case 'response-parse': {
       const request = pending(lib, testCase.builder).toRequest();
-      const parsed = parseFor(lib, testCase.builder)(request, testCase.response).toObject();
+      const parsed = (await parseFor(lib, testCase.builder)(request, testCase.response)).toObject();
 
       return {
         expected: testCase.expect.result_json,

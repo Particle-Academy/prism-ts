@@ -1,7 +1,6 @@
 import { canonicalJson, isJsonObject } from '../../json.js';
 import type { JsonObject } from '../../json.js';
 import { PrismError } from '../../errors.js';
-import { UserMessage } from '../../value-objects/messages/index.js';
 import type { StructuredRequest } from '../../structured/request.js';
 import type { StructuredResponse } from '../../structured/response.js';
 import { structuredFromTextResponse } from '../../structured/from-text.js';
@@ -14,7 +13,7 @@ import { AnthropicStreamMapper } from './stream-events.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
 import { Provider } from '../provider.js';
-import { buildRequestBody } from './build-request-body.js';
+import { buildRequestBody, buildStructuredBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
@@ -76,11 +75,15 @@ export class Anthropic extends Provider {
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
+    return this.#send(request, buildRequestBody(request));
+  }
+
+  async #send(request: TextRequest, body: JsonObject): Promise<TextResponse> {
     const response = await this.#transport({
       url: `${withoutTrailingSlashes(this.url)}/messages`,
       method: 'POST',
       headers: this.headers(),
-      body: canonicalJson(buildRequestBody(request)),
+      body: canonicalJson(body),
       clientOptions: request.clientOptions(),
     });
 
@@ -132,24 +135,11 @@ export class Anthropic extends Provider {
     yield* mapper.finish();
   }
 
-  /**
-   * Structured output by ASKING, because Anthropic has no schema-enforcing mode.
-   *
-   * OpenAI can be told to enforce a schema; Anthropic cannot, so the reference
-   * appends a message spelling out the schema and demanding JSON with nothing
-   * around it. That is a request, not a guarantee — which is exactly why
-   * `structured` is nullable and `text` survives beside it. A model that answers
-   * in prose here has not malfunctioned; it has declined, and the caller gets to
-   * see what it said.
-   *
-   * The instruction is appended as a USER message rather than a system prompt,
-   * matching the reference: the caller's own system prompt keeps its meaning,
-   * and the demand arrives as the most recent thing said.
-   */
+  /** Structured output through Anthropic's native output_config.format. */
   override async structured(request: StructuredRequest): Promise<StructuredResponse> {
-    request.addMessage(new UserMessage(schemaInstruction(request)));
-
-    return structuredFromTextResponse(await this.text(request));
+    return structuredFromTextResponse(await this.#send(request, buildStructuredBody(request)), {
+      nativeOutputFormat: true,
+    });
   }
 
   /**
@@ -192,19 +182,6 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
 
   return `${provider} error [${status}]: ${detail}`;
 }
-
-/**
- * The message that asks for JSON and nothing else.
- *
- * Wording tracks the reference deliberately, including the parenthetical about
- * backticks: models fence JSON by habit, and the phrasing is the only lever
- * there is. `extractStructured` still unfences as a second line of defence,
- * because a plea is not a guarantee.
- */
-function schemaInstruction(request: StructuredRequest): string {
-  return `Respond with ONLY JSON (i.e. not in backticks or a code block, with NO CONTENT outside the JSON) that matches the following schema: \n ${JSON.stringify(request.schema().toObject(), null, 2)}`;
-}
-
 
 /** An SSE payload that is not JSON is skipped rather than fatal. */
 function parsePayload(payload: string): JsonObject {

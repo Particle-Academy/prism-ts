@@ -105,6 +105,14 @@ describe('the corpus itself', () => {
       .suiteIds()
       .filter((id) => corpus.suite(id).manifest.kind !== 'security-corpus');
 
+    // Keep exact inventories for the current release and this candidate. This
+    // lets the runtime land before the companion corpus without accepting a
+    // missing new suite in 0.1.14 or an unknown future corpus version.
+    expect(['0.1.13', '0.1.14']).toContain(corpus.version);
+    const structuredSuites = corpus.version === '0.1.14'
+      ? ['mistral-structured-response', 'structured-response']
+      : [];
+
     expect(runnable).toEqual([
       // Every row is SKIPPED for this language (G-49: Anthropic response
       // citations are not ported), but the suite still has to be listed --
@@ -123,6 +131,7 @@ describe('the corpus itself', () => {
       'provider-replay-request',
       'value-object-roundtrip',
       'text-errors',
+      ...structuredSuites,
     ].sort());
 
     expect(corpus.digest()).toMatch(/^sha256:[0-9a-f]{64}$/);

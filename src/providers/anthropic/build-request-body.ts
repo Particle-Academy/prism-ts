@@ -1,6 +1,9 @@
 import { isJsonObject } from '../../json.js';
 import type { JsonObject, JsonValue } from '../../json.js';
 import { whereNotNull } from '../../internal/filters.js';
+import { isTruthyByReferenceRules } from '../../internal/filters.js';
+import { PrismError } from '../../errors.js';
+import type { StructuredRequest } from '../../structured/request.js';
 import type { TextRequest } from '../../text/request.js';
 import { mapMessages, mapSystem } from './maps/message-map.js';
 import { mapToolChoice } from './maps/tool-choice-map.js';
@@ -58,6 +61,24 @@ export function buildRequestBody(request: TextRequest): JsonObject {
   };
 
   return { ...body, ...whereNotNull(optional) };
+}
+
+/** Native JSON schema mode; unsupported modes are refused before transport. */
+export function buildStructuredBody(request: StructuredRequest): JsonObject {
+  if (isTruthyByReferenceRules(request.providerOptions('use_tool_calling'))) {
+    throw PrismError.unsupportedProviderAction('Structured tool calling', 'Anthropic');
+  }
+  if (request.providerOptions('citations') === true) {
+    throw PrismError.unsupportedProviderAction('Citations with native structured output', 'Anthropic');
+  }
+  const body = buildRequestBody(request);
+  return {
+    ...body,
+    output_config: {
+      ...(isJsonObject(body.output_config) ? body.output_config : {}),
+      format: { type: 'json_schema', schema: request.schema().toObject() },
+    },
+  };
 }
 
 /**

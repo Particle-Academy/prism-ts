@@ -3,6 +3,9 @@ import type { FinishReason } from '../enums.js';
 import type { Meta } from '../value-objects/meta.js';
 import type { Usage } from '../value-objects/usage.js';
 import type { TextStep } from '../text/step.js';
+import type { ToolCall } from '../value-objects/tool-call.js';
+import type { ToolResult } from '../value-objects/tool-result.js';
+import { StructuredStep } from './step.js';
 
 export interface StructuredResponseOptions {
   steps: readonly TextStep[];
@@ -13,26 +16,21 @@ export interface StructuredResponseOptions {
   meta: Meta;
   additionalContent?: Readonly<JsonObject>;
   raw?: JsonObject | null;
+  toolCalls?: readonly ToolCall[];
+  providerToolCalls?: readonly JsonObject[];
+  toolResults?: readonly ToolResult[];
 }
 
 /**
- * The answer, and the answer parsed.
+ * The parsed result and its native conversation state.
  *
- * `text` and `structured` are BOTH kept, and the pairing is the point: `text`
- * is what the model actually said, `structured` is what could be made of it.
- *
- * `structured` IS NULLABLE, AND NULL IS NOT AN ERROR. A model asked for JSON can
- * return prose — a refusal, an apology, a fenced block with commentary around it
- * — and the reference reports that by leaving `structured` null while `text`
- * still carries what came back. Collapsing the two, or throwing on unparseable
- * output, would take away the one artifact that explains WHY it did not parse.
- *
- * So a caller checks `structured` before using it, and reads `text` when it is
- * null. The type says so; `JsonObject | null` cannot be indexed without the
- * check.
+ * OpenAI and Mistral retain JSON in text. Anthropic's native output-format
+ * mode exposes the parsed result with empty text; its original JSON remains in
+ * the assistant message and raw response. Check the nullable structured value
+ * before reading fields from it.
  */
 export class StructuredResponse {
-  readonly steps: readonly TextStep[];
+  readonly steps: readonly StructuredStep[];
 
   readonly text: string;
 
@@ -48,8 +46,14 @@ export class StructuredResponse {
 
   readonly raw: JsonObject | null;
 
+  readonly toolCalls: readonly ToolCall[];
+
+  readonly providerToolCalls: readonly JsonObject[];
+
+  readonly toolResults: readonly ToolResult[];
+
   constructor(options: StructuredResponseOptions) {
-    this.steps = options.steps;
+    this.steps = options.steps.map((step) => step instanceof StructuredStep ? step : new StructuredStep(step));
     this.text = options.text;
     this.structured = options.structured;
     this.finishReason = options.finishReason;
@@ -57,6 +61,9 @@ export class StructuredResponse {
     this.meta = options.meta;
     this.additionalContent = options.additionalContent ?? {};
     this.raw = options.raw ?? null;
+    this.toolCalls = options.toolCalls ?? [];
+    this.providerToolCalls = options.providerToolCalls ?? [];
+    this.toolResults = options.toolResults ?? [];
   }
 
   toObject(): JsonObject {
@@ -67,6 +74,9 @@ export class StructuredResponse {
       finish_reason: this.finishReason,
       usage: this.usage.toObject(),
       meta: this.meta.toObject(),
+      tool_calls: this.toolCalls.map((call) => call.toObject()),
+      provider_tool_calls: this.providerToolCalls.map((call) => ({ ...call })),
+      tool_results: this.toolResults.map((result) => result.toObject()),
       additional_content: { ...this.additionalContent },
       raw: this.raw === null ? null : { ...this.raw },
     };
