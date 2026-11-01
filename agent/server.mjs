@@ -48,7 +48,7 @@ async function dispatch(method, params) {
       protocolVersion: PROTOCOL_VERSION,
       supportedVersions: [PROTOCOL_VERSION],
       capabilities: { tools: {} },
-      serverInfo: { name: `prism.${LANGUAGE}`, version: '0.1.0' },
+      serverInfo: { name: `prism.${LANGUAGE}`, version: '0.6.0' },
     };
   }
 
