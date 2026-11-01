@@ -25,6 +25,8 @@ import { responseReplayItems } from './replay.js';
 
 export interface ParseTextResponseOptions {
   rateLimits?: readonly ProviderRateLimit[];
+  /** Structured responses retain replay items rather than text-only summaries. */
+  structured?: boolean;
 }
 
 /**
@@ -60,7 +62,7 @@ export function parseTextResponse(
 
   const builder = new ResponseBuilder();
 
-  builder.addStep(buildStep(data, request, finishReason, options.rateLimits ?? []));
+  builder.addStep(buildStep(data, request, finishReason, options.rateLimits ?? [], options.structured === true));
 
   return builder.toResponse();
 }
@@ -86,6 +88,7 @@ function buildStep(
   request: TextRequest,
   finishReason: FinishReason,
   rateLimits: readonly ProviderRateLimit[],
+  structured: boolean,
 ): TextStep {
   const output = readArray(data.output);
   const usage = readObject(data.usage) ?? {};
@@ -114,7 +117,9 @@ function buildStep(
     ),
     messages: request.messages(),
     systemPrompts: request.systemPrompts(),
-    additionalContent: whereNotNull({
+    additionalContent: structured ? whereNotNull({
+      output_items: replay.length > 0 ? replay : null,
+    }) : whereNotNull({
       searchQueries: webSearchValues(output, 'search', 'query'),
       openPageUrls: webSearchValues(output, 'open_page', 'url'),
       findInPagePatterns: webSearchValues(output, 'find_in_page', 'pattern'),

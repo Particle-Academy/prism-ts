@@ -82,14 +82,7 @@ export class Mistral extends Provider {
     return parseTextResponse(request, response.body, { rateLimits: parseRateLimits(response.headers) });
   }
 
-  /**
-   * Structured output through Mistral's OWN strict schema mode.
-   *
-   * So this is enforced, not requested — the same guarantee the OpenAI path
-   * gives and stronger than the Anthropic one, which can only ask. G-08 records
-   * that `structured` means different things per provider; Mistral lands on the
-   * strong side of it.
-   */
+  /** Structured output through Mistral's JSON schema response format. */
   override async structured(request: StructuredRequest): Promise<StructuredResponse> {
     const response = await this.#post(
       'chat/completions',
@@ -99,6 +92,7 @@ export class Mistral extends Provider {
 
     return structuredFromTextResponse(
       parseTextResponse(request, response.body, { rateLimits: parseRateLimits(response.headers) }),
+      { assistantAdditionalContent: false },
     );
   }
 

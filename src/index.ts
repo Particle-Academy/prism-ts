@@ -74,6 +74,8 @@ export { StructuredRequest } from './structured/request.js';
 export type { StructuredRequestOptions } from './structured/request.js';
 export { StructuredResponse } from './structured/response.js';
 export type { StructuredResponseOptions } from './structured/response.js';
+export { StructuredStep } from './structured/step.js';
+export type { StructuredStepOptions } from './structured/step.js';
 export { extractStructured } from './structured/extract.js';
 export { fetchStreamTransport } from './http/transport.js';
 export type { HttpStreamResponse, HttpStreamTransport } from './http/transport.js';

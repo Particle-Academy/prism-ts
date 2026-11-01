@@ -156,7 +156,7 @@ describe('structured output', () => {
     ).toThrowError(PrismError);
   });
 
-  it('asks Anthropic for JSON in the prompt, since it cannot enforce a schema', async () => {
+  it('asks Anthropic for its native JSON schema format', async () => {
     const body = {
       id: 'msg_1',
       model: 'claude-sonnet-4-5',
@@ -177,8 +177,11 @@ describe('structured output', () => {
       .withPrompt('Who?')
       .asStructured();
 
-    expect(calls[0]?.body).toContain('Respond with ONLY JSON');
+    const sent = JSON.parse(calls[0]?.body ?? '{}');
+    expect(sent.output_config.format).toEqual({ type: 'json_schema', schema: SCHEMA.toObject() });
+    expect(sent.messages).toHaveLength(1);
     expect(response.structured).toEqual({ name: 'Ada' });
+    expect(response.text).toBe('');
   });
 
   it('keeps the text and reports null when the answer is not an object', async () => {

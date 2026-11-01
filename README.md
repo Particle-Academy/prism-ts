@@ -62,6 +62,14 @@ pinned by fixtures.
 Failures carry a stable `code` (`PrismError.code`). The prose is not part of the
 contract and will change; the code will not.
 
+Structured responses retain `structured`, `steps`, `raw`, and the tool carrier
+arrays when serialized with `toObject()`. Each exported `StructuredStep` also
+retains its completed `messages` and per-step parsed value. Preserve that
+conversation state when continuing a conversation. Anthropic uses native schema
+output by default: `text` is empty while the original JSON remains in the
+assistant message. Explicit structured tool mode is currently refused with
+`unsupported_provider_action` before HTTP; it does not run tools.
+
 ## Install
 
 ```sh

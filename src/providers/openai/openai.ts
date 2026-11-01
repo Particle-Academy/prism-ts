@@ -124,7 +124,9 @@ export class OpenAI extends Provider {
     // The response is parsed by the TEXT parser and then given its structured
     // reading, so finish reasons, token-limit failures, usage and rate limits
     // behave identically on both paths by construction.
-    return structuredFromTextResponse(await this.#send('structured', request, buildStructuredBody(request)));
+    return structuredFromTextResponse(await this.#send('structured', request, buildStructuredBody(request)), {
+      parsedStep: true,
+    });
   }
 
   /**
@@ -490,7 +492,10 @@ export class OpenAI extends Provider {
       });
     }
 
-    return parseTextResponse(request, response.body, { rateLimits: parseRateLimits(response.headers) });
+    return parseTextResponse(request, response.body, {
+      rateLimits: parseRateLimits(response.headers),
+      structured: action === 'structured',
+    });
   }
 
   /** Optional headers are OMITTED rather than sent empty when unconfigured. */
