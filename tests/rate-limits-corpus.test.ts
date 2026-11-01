@@ -14,16 +14,15 @@ import { parseRateLimits as openaiLimits } from '../src/providers/openai/rate-li
  * language throttles on a bucket the other cannot see, or retries into a limit
  * it believes has lifted.
  *
- * **This port disagreed with the reference on nine of the sixteen rows on the
- * suite's first run, and on five now.** They are pinned here rather than
- * silently closed: a fix has to update the corpus in the same breath, which is
- * the only thing that makes the fix visible to the other two languages.
+ * Six of the sixteen cross-language rows still disagree after published PHP
+ * 0.144.2 closes prl-0015. They remain pinned: closing a gap must update the
+ * corpus and its explicit agreement controls in the same change.
  *
  * Two of the four that closed were this port's own defects — it read Mistral's
  * headers under names Mistral does not send (G-41), and it matched its prefix
  * case-sensitively against field names HTTP defines as case-insensitive (G-43).
- * The five that remain are one defect with five faces: this port ENUMERATES
- * Anthropic's buckets where the reference DISCOVERS them (G-42).
+ * Five remaining rows reflect this port ENUMERATING Anthropic's buckets where
+ * the reference DISCOVERS them (G-42). The wire-offset row remains separate.
  *
  * Mirrors prism-py/tests/test_provider_rate_limits_corpus.py case for case.
  */
@@ -106,9 +105,18 @@ describe('the cross-language provider-rate-limits corpus', () => {
       'prl-0003',
       'prl-0004',
       'prl-0005',
-      'prl-0015',
       'prl-0016',
     ]);
+  });
+
+  it('agrees that absent Mistral quota headers produce no bucket', () => {
+    const entry = caseOf('prl-0015');
+    const empty = { outcome: 'ok', buckets: [] };
+    expect(entry.agrees).toBe(true);
+    expect(read(entry)).toEqual(empty);
+    for (const language of ['php', 'ts', 'py'] as const) {
+      expect(entry.result[language]).toEqual(empty);
+    }
   });
 
   it('reads a real Mistral response, under the names the service sends', () => {
