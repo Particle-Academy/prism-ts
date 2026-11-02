@@ -130,11 +130,20 @@ jobs:
       # typecheck would have been the easier fix and the wrong one: the probe
       # test is the thing that decides whether the conformance table measures
       # anything, so it is the last code that should go unchecked.
+      - name: Read pinned parity revision
+        id: parity
+        env:
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+        run: node .github/scripts/parity-pin.mjs
+
       - name: Checkout prism-parity
         uses: actions/checkout@v4
         with:
           repository: Particle-Academy/prism-parity
+          ref: ${{ steps.parity.outputs.sha }}
           path: .parity
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
