@@ -29,16 +29,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Pinned corpus must be merged
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NODE_OPTIONS: ''
-          NODE_PATH: ''
-        run: node .github/scripts/parity-pin.mjs --release
-
-      # Run again at publish time, not only when the commit landed: a dependency
-      # that has since gone unmaintained, or an approval since withdrawn from the
-      # allowlist, should stop the release.
       - name: Fetch the third-party allowlist
         uses: actions/checkout@v4
         with:
@@ -114,6 +104,16 @@ jobs:
       # in step. Publishing v0.2.0 from a tree that declares 0.1.0 puts a version
       # on npm that no commit here claims -- and npm is append-only, so it can be
       # deprecated but never replaced.
+      - name: Pinned corpus must be merged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+        run: node .github/scripts/parity-pin.mjs --release
+
+      # Run again at publish time, not only when the commit landed: a dependency
+      # that has since gone unmaintained, or an approval since withdrawn from the
+      # allowlist, should stop the release.
       - name: Tag must match the declared version
         run: |
           tag="${GITHUB_REF_NAME#v}"
