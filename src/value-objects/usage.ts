@@ -9,6 +9,10 @@ export class Usage {
     readonly cacheReadInputTokens: number | null = null,
     readonly thoughtTokens: number | null = null,
     readonly cost: number | null = null,
+    /** Cache writes with a 5-minute TTL; Anthropic bills 1.25x base input price. */
+    readonly cacheWrite5mInputTokens: number | null = null,
+    /** Cache writes with a 1-hour TTL; Anthropic bills 2x base input price. */
+    readonly cacheWrite1hInputTokens: number | null = null,
   ) {}
 
   toObject(): JsonObject {
@@ -19,6 +23,8 @@ export class Usage {
       cache_read_input_tokens: this.cacheReadInputTokens,
       thought_tokens: this.thoughtTokens,
       cost: this.cost,
+      cache_write_5m_input_tokens: this.cacheWrite5mInputTokens,
+      cache_write_1h_input_tokens: this.cacheWrite1hInputTokens,
     };
   }
 
@@ -30,6 +36,8 @@ export class Usage {
       readNullableNumber(object.cache_read_input_tokens),
       readNullableNumber(object.thought_tokens),
       readNullableNumber(object.cost),
+      readNullableNumber(object.cache_write_5m_input_tokens),
+      readNullableNumber(object.cache_write_1h_input_tokens),
     );
   }
 }

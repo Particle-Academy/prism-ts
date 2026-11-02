@@ -155,6 +155,8 @@ describe('supporting value objects', () => {
       'cache_read_input_tokens',
       'thought_tokens',
       'cost',
+      'cache_write_5m_input_tokens',
+      'cache_write_1h_input_tokens',
     ]);
   });
 

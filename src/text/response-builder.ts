@@ -60,6 +60,13 @@ export class ResponseBuilder {
     const sumIfAnyReported = (pick: (step: TextStep) => number | null): number | null =>
       this.#steps.some((step) => pick(step) !== null) ? sum(pick) : null;
 
+    // A nonzero write with no lifetime report makes that bucket incomplete.
+    const cacheWrites = (pick: (usage: Usage) => number | null): number | null =>
+      this.#steps.every((step) => step.usage.cacheWriteInputTokens === null) ||
+      this.#steps.some((step) => (step.usage.cacheWriteInputTokens ?? 0) !== 0 && pick(step.usage) === null)
+        ? null
+        : sum((step) => pick(step.usage));
+
     return new Usage(
       sum((step) => step.usage.promptTokens),
       sum((step) => step.usage.completionTokens),
@@ -67,6 +74,8 @@ export class ResponseBuilder {
       sumIfAnyReported((step) => step.usage.cacheReadInputTokens),
       sumIfAnyReported((step) => step.usage.thoughtTokens),
       sumIfAnyReported((step) => step.usage.cost),
+      cacheWrites((usage) => usage.cacheWrite5mInputTokens),
+      cacheWrites((usage) => usage.cacheWrite1hInputTokens),
     );
   }
 }
