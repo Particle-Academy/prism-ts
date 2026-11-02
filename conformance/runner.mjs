@@ -181,7 +181,9 @@ async function main() {
   // Under a probe a mutant is EXPECTED to fail cases, but the exit code stays
   // as-is and the caller — cross-check, or the port's own probe test — does the
   // judging. A runner that decided for itself would need the answer key.
-  process.exit(Object.keys(driver.failuresBySuite(documents)).length > 0 ? EXIT_FAILURES : EXIT_OK);
+  // stdout can be an asynchronous pipe. A forced exit can discard the tail
+  // of a large JSON report, leaving consumers an invalid verdict document.
+  process.exitCode = Object.keys(driver.failuresBySuite(documents)).length > 0 ? EXIT_FAILURES : EXIT_OK;
 }
 
 await main();
