@@ -8,6 +8,8 @@
  * stable and `PrismError.message` as free to change in any release.
  */
 
+import type { StreamFailureUsage } from './value-objects/stream-failure-usage.js';
+
 export type UrlRefusalCode =
   | 'scheme_not_allowed'
   | 'private_address_refused'
@@ -67,6 +69,8 @@ export interface PrismErrorOptions {
 }
 
 export class PrismError extends Error {
+  #streamFailureUsage: StreamFailureUsage | null = null;
+
   readonly code: PrismErrorCode;
 
   readonly httpStatus: number | null;
@@ -80,6 +84,22 @@ export class PrismError extends Error {
     this.code = code;
     this.httpStatus = options.httpStatus ?? null;
     this.responseBody = options.responseBody ?? null;
+  }
+
+  streamFailureUsage(): StreamFailureUsage | null {
+    return this.#streamFailureUsage;
+  }
+
+  withStreamFailureUsage(failureUsage: StreamFailureUsage | null): this {
+    this.#streamFailureUsage = failureUsage;
+    return this;
+  }
+
+  toJSON(): object {
+    // Preserve the legacy enumerable fields; never expose private exception state.
+    return { ...this, ...(this.#streamFailureUsage === null ? {} : {
+      failure_usage: this.#streamFailureUsage.toObject(),
+    }) };
   }
 
   static promptAndMessages(): PrismError {

@@ -9,6 +9,8 @@ import { fetchTransport, fetchStreamTransport } from '../../http/transport.js';
 import type { HttpStreamTransport } from '../../http/transport.js';
 import type { StreamEvent } from '../../streaming/events.js';
 import { sseData } from '../../streaming/sse.js';
+import { ErrorEvent } from '../../streaming/events.js';
+import { failureAwareSse } from '../../streaming/failure-usage.js';
 import { AnthropicStreamMapper } from './stream-events.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
@@ -124,8 +126,11 @@ export class Anthropic extends Provider {
 
     const mapper = new AnthropicStreamMapper();
 
-    for await (const payload of sseData(response.chunks)) {
-      const event = mapper.map(parsePayload(payload));
+    for await (const payload of failureAwareSse(sseData(response.chunks), () => mapper.failureUsage())) {
+      if (payload instanceof ErrorEvent) { yield payload; continue; }
+      const parsed = parsePayload(payload);
+      if (parsed === null) { yield mapper.decodeFailure(); break; }
+      const event = mapper.map(parsed);
 
       if (event !== null) {
         yield event;
@@ -184,13 +189,13 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
 }
 
 /** An SSE payload that is not JSON is skipped rather than fatal. */
-function parsePayload(payload: string): JsonObject {
+function parsePayload(payload: string): JsonObject | null {
   try {
     const parsed: unknown = JSON.parse(payload);
 
     return isJsonObject(parsed) ? parsed : {};
   } catch {
-    return {};
+    return null;
   }
 }
 

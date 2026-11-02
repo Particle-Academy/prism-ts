@@ -16,3 +16,4 @@ export type { ToolCallArguments } from './tool-call.js';
 export { ToolResult } from './tool-result.js';
 export type { ToolResultValue } from './tool-result.js';
 export { Usage } from './usage.js';
+export { StreamFailureUsage } from './stream-failure-usage.js';

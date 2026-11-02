@@ -2,6 +2,7 @@ import type { JsonObject } from '../json.js';
 import type { FinishReason } from '../enums.js';
 import type { ToolCall } from '../value-objects/tool-call.js';
 import type { Usage } from '../value-objects/usage.js';
+import type { StreamFailureUsage } from '../value-objects/stream-failure-usage.js';
 
 /**
  * What a stream emits.
@@ -154,14 +155,22 @@ export class ToolCallEvent extends StreamEvent {
  * ends after it; the caller decides what the partial answer was worth.
  */
 export class ErrorEvent extends StreamEvent {
+  readonly #failureUsage: StreamFailureUsage | null;
+
   constructor(
     readonly code: string,
     readonly message: string,
     id?: string,
     timestamp?: number,
     readonly recoverable?: boolean,
+    failureUsage: StreamFailureUsage | null = null,
   ) {
     super(id, timestamp);
+    this.#failureUsage = failureUsage;
+  }
+
+  get failureUsage(): StreamFailureUsage | null {
+    return this.#failureUsage;
   }
 
   type(): StreamEventType {
@@ -169,7 +178,15 @@ export class ErrorEvent extends StreamEvent {
   }
 
   toObject(): JsonObject {
-    return { ...this.base(), code: this.code, message: this.message, ...(this.recoverable === undefined ? {} : { recoverable: this.recoverable }) };
+    return { ...this.base(), code: this.code, message: this.message,
+      ...(this.recoverable === undefined ? {} : { recoverable: this.recoverable }),
+      ...(this.#failureUsage === null ? {} : { failure_usage: this.#failureUsage.toObject() }) };
+  }
+
+  toJSON(): object {
+    return { ...this, ...(this.#failureUsage === null ? {} : {
+      failure_usage: this.#failureUsage.toObject(),
+    }) };
   }
 }
 

@@ -108,8 +108,8 @@ describe('the corpus itself', () => {
     // Keep exact inventories for the current release and this candidate. This
     // lets the runtime land before the companion corpus without accepting a
     // missing new suite in 0.1.14 or an unknown future corpus version.
-    expect(['0.1.13', '0.1.14', '0.1.15']).toContain(corpus.version);
-    const structuredSuites = ['0.1.14', '0.1.15'].includes(corpus.version)
+    expect(['0.1.13', '0.1.14', '0.1.15', '0.1.16']).toContain(corpus.version);
+    const structuredSuites = ['0.1.14', '0.1.15', '0.1.16'].includes(corpus.version)
       ? ['mistral-structured-response', 'structured-response']
       : [];
 
@@ -131,6 +131,7 @@ describe('the corpus itself', () => {
       'provider-replay-request',
       'value-object-roundtrip',
       'text-errors',
+      ...(corpus.version === '0.1.16' ? ['stream-failure-usage'] : []),
       ...structuredSuites,
     ].sort());
 

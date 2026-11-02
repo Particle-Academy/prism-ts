@@ -14,6 +14,8 @@ import type { HttpBinaryTransport, HttpStreamTransport, HttpTransport } from '..
 import { fetchBinaryTransport, fetchStreamTransport, fetchTransport } from '../../http/transport.js';
 import type { StreamEvent } from '../../streaming/events.js';
 import { sseData } from '../../streaming/sse.js';
+import { ErrorEvent } from '../../streaming/events.js';
+import { failureAwareSse } from '../../streaming/failure-usage.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
 import { Provider } from '../provider.js';
@@ -182,14 +184,17 @@ export class Mistral extends Provider {
 
     const mapper = new MistralStreamMapper();
 
-    for await (const payload of sseData(response.chunks)) {
+    for await (const payload of failureAwareSse(sseData(response.chunks), () => mapper.failureUsage())) {
+      if (payload instanceof ErrorEvent) { yield payload; continue; }
       // Mistral closes with a literal `[DONE]`, which is not JSON. Parsing it
       // yields null and the mapper would read an empty payload as a chunk.
       if (payload === '[DONE]') {
         return;
       }
 
-      for (const event of mapper.map(parsePayload(payload))) {
+      const parsed = parsePayload(payload);
+      if (parsed === null) { yield mapper.decodeFailure(); break; }
+      for (const event of mapper.map(parsed)) {
         yield event;
       }
     }
@@ -260,13 +265,13 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
   return `${provider} error [${status}]: ${detail}`;
 }
 
-function parsePayload(payload: string): JsonObject {
+function parsePayload(payload: string): JsonObject | null {
   try {
     const parsed: unknown = JSON.parse(payload);
 
     return isJsonObject(parsed) ? parsed : {};
   } catch {
-    return {};
+    return null;
   }
 }
 
