@@ -133,6 +133,7 @@ jobs:
       - name: Read pinned parity revision
         id: parity
         env:
+          GH_TOKEN: ${{ github.token }}
           NODE_OPTIONS: ''
           NODE_PATH: ''
         run: node .github/scripts/parity-pin.mjs
@@ -148,7 +149,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
 
       # After npm ci, always — a --no-save path install is extraneous and any
