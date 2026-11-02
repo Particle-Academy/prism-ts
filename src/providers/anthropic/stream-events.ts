@@ -199,19 +199,9 @@ export class AnthropicStreamMapper {
 
     if (tokens !== null) {
       if (typeof tokens.output_tokens === 'number') this.#finalUsageReported = true;
-      // Rebuilt rather than mutated, so everything not restated here would be
-      // LOST. Prompt tokens were already carried forward for that reason; cache
-      // and thinking counts arrive at message_start and never again, so they
-      // need the same treatment.
-      this.#usage = new Usage(
-        this.#usage?.promptTokens ?? 0,
-        readNumber(tokens.output_tokens),
-        this.#usage?.cacheWriteInputTokens ?? null,
-        this.#usage?.cacheReadInputTokens ?? null,
-        readNullableNumber(readObject(tokens.output_tokens_details)?.thinking_tokens) ??
-          this.#usage?.thoughtTokens ??
-          null,
-      );
+      // Restated counters replace cumulative values; sparse deltas retain the
+      // earlier report, including cache lifetimes supplied at message_start.
+      this.#usage = usage(tokens, this.#usage);
     }
   }
 
@@ -222,17 +212,23 @@ export class AnthropicStreamMapper {
   }
 }
 
-function usage(raw: JsonObject | null): Usage | null {
+function usage(raw: JsonObject | null, previous: Usage | null = null): Usage | null {
   if (raw === null) {
     return null;
   }
 
+  const cacheWriteTotal = readNullableNumber(raw.cache_creation_input_tokens) ?? previous?.cacheWriteInputTokens ?? null;
+  const cacheWriteReport = cacheWriteTotal === previous?.cacheWriteInputTokens ? previous : null;
+
   return new Usage(
-    readNumber(raw.input_tokens),
-    readNumber(raw.output_tokens),
-    readNullableNumber(raw.cache_creation_input_tokens),
-    readNullableNumber(raw.cache_read_input_tokens),
-    readNullableNumber(readObject(raw.output_tokens_details)?.thinking_tokens),
+    readNullableNumber(raw.input_tokens) ?? previous?.promptTokens ?? 0,
+    readNullableNumber(raw.output_tokens) ?? previous?.completionTokens ?? 0,
+    cacheWriteTotal,
+    readNullableNumber(raw.cache_read_input_tokens) ?? previous?.cacheReadInputTokens ?? null,
+    readNullableNumber(readObject(raw.output_tokens_details)?.thinking_tokens) ?? previous?.thoughtTokens ?? null,
+    previous?.cost ?? null,
+    readNullableNumber(readObject(raw.cache_creation)?.ephemeral_5m_input_tokens) ?? cacheWriteReport?.cacheWrite5mInputTokens ?? null,
+    readNullableNumber(readObject(raw.cache_creation)?.ephemeral_1h_input_tokens) ?? cacheWriteReport?.cacheWrite1hInputTokens ?? null,
   );
 }
 

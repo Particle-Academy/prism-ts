@@ -37,7 +37,7 @@ const CONSTRUCTS = {
   ToolResultMessage: ['toolResults', 'toolApprovalResponses'],
   ToolCall: ['id', 'name', 'arguments', 'resultId', 'reasoningId', 'reasoningSummary'],
   ToolResult: ['toolCallId', 'toolName', 'args', 'result', 'toolCallResultId', 'artifacts'],
-  Usage: ['promptTokens', 'completionTokens', 'cacheWriteInputTokens', 'cacheReadInputTokens', 'thoughtTokens', 'cost'],
+  Usage: ['promptTokens', 'completionTokens', 'cacheWriteInputTokens', 'cacheReadInputTokens', 'thoughtTokens', 'cost', 'cacheWrite5mInputTokens', 'cacheWrite1hInputTokens'],
   Meta: ['id', 'model', 'rateLimits', 'serviceTier'],
   ProviderTool: ['type', 'name', 'options'],
 };
@@ -53,6 +53,27 @@ export function hydrate(lib, value) {
   if (!isObject(value) || !('$' in value)) return value;
 
   const tag = value.$;
+
+  if (tag === 'UsageAggregate') {
+    const builder = new lib.ResponseBuilder();
+    const conserved = (usage) => {
+      if (usage.cacheWrite5mInputTokens !== null && usage.cacheWrite1hInputTokens !== null &&
+        usage.cacheWriteInputTokens !== usage.cacheWrite5mInputTokens + usage.cacheWrite1hInputTokens) {
+        throw new Error('Reported cache-write total disagrees with lifetime split.');
+      }
+    };
+    for (const step of value.steps) {
+      const usage = hydrate(lib, step);
+      conserved(usage);
+      builder.addStep(new lib.TextStep({ text: '{}', finishReason: lib.FinishReason.Stop, usage, meta: new lib.Meta('', '') }));
+    }
+    const usage = builder.toResponse().usage;
+    conserved(usage);
+    for (const [key, expected] of Object.entries(value.expected)) {
+      if (usage.toObject()[key] !== expected) throw new Error(`Independent cache-write aggregate failed: ${key}`);
+    }
+    return usage;
+  }
 
   if (tag === 'ToolChoice') return lib.toolChoiceFromName(value.case);
   if (tag === 'Tool') return hydrateTool(lib, value);
