@@ -55,6 +55,8 @@ import type { HttpBinaryTransport, HttpStreamTransport, MultipartBody } from '..
 import { fetchBinaryTransport } from '../../http/transport.js';
 import type { StreamEvent } from '../../streaming/events.js';
 import { sseData } from '../../streaming/sse.js';
+import { ErrorEvent } from '../../streaming/events.js';
+import { failureAwareSse, StreamFailureUsageTracker } from '../../streaming/failure-usage.js';
 import { mapStreamEvent } from './stream-events.js';
 import type { TextRequest } from '../../text/request.js';
 import type { TextResponse } from '../../text/response.js';
@@ -154,8 +156,16 @@ export class OpenAI extends Provider {
       );
     }
 
-    for await (const payload of sseData(response.chunks)) {
-      const event = mapStreamEvent(parsePayload(payload));
+    const failure = new StreamFailureUsageTracker('openai');
+    for await (const payload of failureAwareSse(sseData(response.chunks), () => failure.snapshot())) {
+      if (payload instanceof ErrorEvent) { yield payload; continue; }
+      const parsed = parsePayload(payload);
+      if (parsed === null) {
+        yield new ErrorEvent('stream_decode_error', 'The stream contained invalid JSON.', undefined, undefined, false, failure.snapshot());
+        break;
+      }
+      failure.record(parsed);
+      const event = mapStreamEvent(parsed, failure.snapshot());
 
       if (event !== null) {
         yield event;
@@ -536,14 +546,14 @@ function describeHttpFailure(provider: string, status: number, body: unknown): s
   return `${provider} error [${status}]: ${detail}`;
 }
 
-/** An SSE payload that is not JSON is skipped rather than fatal — see mapStreamEvent. */
-function parsePayload(payload: string): JsonObject {
+/** Recognized malformed JSON is an observable stream failure. */
+function parsePayload(payload: string): JsonObject | null {
   try {
     const parsed: unknown = JSON.parse(payload);
 
     return isJsonObject(parsed) ? parsed : {};
   } catch {
-    return {};
+    return null;
   }
 }
 

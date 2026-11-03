@@ -14,6 +14,22 @@ records where provider behavior agrees and where it differs.
 
 ## Scope
 
+Streams from Anthropic, OpenAI and Mistral retain provider-reported usage when
+an attempt fails. Read the immutable `StreamFailureUsage` from
+`ErrorEvent.failureUsage`, or `PrismError.streamFailureUsage()` for an SDK-owned
+read exception. Its `usage` includes all eight usage fields; `reportedFields`
+distinguishes a reported zero from an unknown counter. These snapshots are
+provisional, cover only the failed attempt and exclude completed steps.
+`failure_usage` is omitted from serialization when no counter was reported.
+
+Recognized malformed stream JSON now emits one `stream_decode_error`, including
+when usage is unknown. Anthropic then ends with Error; OpenAI and Mistral emit no
+fabricated terminal event. A foreign transport failure with reported usage emits
+one error event before rethrowing the original exception. Successful accounting,
+exception identity/cause and the serialized fields of pre-existing errors
+without usage remain unchanged. Native multi-step stream/tool continuation is
+still unsupported.
+
 Stored assistant messages retain provider replay state in `additionalContent`:
 OpenAI Responses uses `output_items`; Anthropic uses ordered `content_blocks`,
 with `thinking_blocks` as a fallback. Keep that metadata when sending history

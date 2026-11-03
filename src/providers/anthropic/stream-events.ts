@@ -3,6 +3,8 @@ import { readNullableNumber } from '../../internal/filters.js';
 import { FinishReason } from '../../enums.js';
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
+import type { StreamFailureUsage } from '../../value-objects/stream-failure-usage.js';
+import { StreamFailureUsageTracker } from '../../streaming/failure-usage.js';
 import {
   ErrorEvent,
   StreamEndEvent,
@@ -30,6 +32,7 @@ import { mapFinishReason } from './maps/finish-reason-map.js';
  * contents wrong.
  */
 export class AnthropicStreamMapper {
+  readonly #failure = new StreamFailureUsageTracker('anthropic');
   #messageId = '';
 
   #stopReason: JsonObject = {};
@@ -54,6 +57,7 @@ export class AnthropicStreamMapper {
    * consumer can use; they are dropped rather than surfaced as noise.
    */
   map(payload: JsonObject): StreamEvent | null {
+    this.#failure.record(payload);
     switch (readString(payload.type)) {
       case 'message_start':
         return this.#messageStart(payload);
@@ -86,6 +90,7 @@ export class AnthropicStreamMapper {
           undefined,
           undefined,
           false,
+          this.failureUsage(),
         );
 
       default:
@@ -104,7 +109,7 @@ export class AnthropicStreamMapper {
 
     if (!this.#messageStopped && !this.#failed) {
       this.#failed = true;
-      events.push(new ErrorEvent('incomplete_stream', 'The stream ended before Anthropic finished the message.', undefined, undefined, false));
+      events.push(new ErrorEvent('incomplete_stream', 'The stream ended before Anthropic finished the message.', undefined, undefined, false, this.failureUsage()));
     }
 
     for (const block of this.#blocks.values()) {
@@ -115,6 +120,15 @@ export class AnthropicStreamMapper {
     events.push(new StreamEndEvent(this.#finishReason(), this.#finalUsageReported ? this.#usage : null));
 
     return events;
+  }
+
+  failureUsage(): StreamFailureUsage | null {
+    return this.#failure.snapshot();
+  }
+
+  decodeFailure(): ErrorEvent {
+    this.#failed = true;
+    return new ErrorEvent('stream_decode_error', 'The stream contained invalid JSON.', undefined, undefined, false, this.failureUsage());
   }
 
   #messageStart(payload: JsonObject): StreamEvent {

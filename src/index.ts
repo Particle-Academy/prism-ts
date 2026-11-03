@@ -22,6 +22,7 @@ export {
   ToolResult,
   ToolResultMessage,
   Usage,
+  StreamFailureUsage,
   UserMessage,
   messageFromObject,
 } from './value-objects/index.js';

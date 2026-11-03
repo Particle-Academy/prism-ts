@@ -2,6 +2,7 @@ import { isJsonObject, type JsonObject } from '../../json.js';
 import { FinishReason } from '../../enums.js';
 import { readArray, readNumber, readObject, readString } from '../../internal/filters.js';
 import {
+  ErrorEvent,
   StreamEndEvent,
   type StreamEvent,
   StreamStartEvent,
@@ -12,6 +13,8 @@ import {
 } from '../../streaming/events.js';
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
+import type { StreamFailureUsage } from '../../value-objects/stream-failure-usage.js';
+import { StreamFailureUsageTracker } from '../../streaming/failure-usage.js';
 
 /**
  * Mistral's chat-completions stream, which needs MEMORY.
@@ -28,6 +31,7 @@ import { Usage } from '../../value-objects/usage.js';
  * the model hallucinating.
  */
 export class MistralStreamMapper {
+  readonly #failure = new StreamFailureUsageTracker('mistral');
   #messageId = '';
 
   #model = '';
@@ -52,6 +56,7 @@ export class MistralStreamMapper {
    * Returning only the first would drop the rest silently.
    */
   map(payload: JsonObject): StreamEvent[] {
+    this.#failure.record(payload);
     const events: StreamEvent[] = [];
 
     if (!this.#started) {
@@ -122,6 +127,14 @@ export class MistralStreamMapper {
    * actually carries it — overwriting the name with an empty string on the
    * second fragment is how a tool call ends up nameless.
    */
+  failureUsage(): StreamFailureUsage | null {
+    return this.#failure.snapshot();
+  }
+
+  decodeFailure(): ErrorEvent {
+    return new ErrorEvent('stream_decode_error', 'The stream contained invalid JSON.', undefined, undefined, false, this.failureUsage());
+  }
+
   #accumulateToolCalls(delta: JsonObject): void {
     for (const raw of readArray(delta.tool_calls)) {
       if (!isJsonObject(raw)) {

@@ -2,6 +2,7 @@ import { isJsonObject, type JsonObject } from '../../json.js';
 import { finishReasonFromValue, FinishReason } from '../../enums.js';
 import { ToolCall } from '../../value-objects/tool-call.js';
 import { Usage } from '../../value-objects/usage.js';
+import type { StreamFailureUsage } from '../../value-objects/stream-failure-usage.js';
 import type {
   StreamEvent} from '../../streaming/events.js';
 import {
@@ -23,7 +24,7 @@ import {
  * A stream that silently ignores an event it cannot use still delivers the
  * text; one that throws delivers nothing.
  */
-export function mapStreamEvent(payload: JsonObject): StreamEvent | null {
+export function mapStreamEvent(payload: JsonObject, failureUsage: StreamFailureUsage | null = null): StreamEvent | null {
   const type = typeof payload.type === 'string' ? payload.type : '';
 
   switch (type) {
@@ -47,6 +48,7 @@ export function mapStreamEvent(payload: JsonObject): StreamEvent | null {
       return new ErrorEvent(
         readString(readObject(payload.error)?.code) || 'unknown_error',
         readString(readObject(payload.error)?.message) || 'The provider reported an error mid-stream.',
+        undefined, undefined, undefined, failureUsage,
       );
 
     case 'response.completed':
