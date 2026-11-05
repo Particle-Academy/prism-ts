@@ -65,14 +65,15 @@ import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
+import { configuredString, nullableString } from '../../internal/provider-config.js';
 
 export interface OpenAIConfig {
-  apiKey?: string;
+  apiKey?: string | null;
   url?: string;
   organization?: string | null;
   project?: string | null;
   /** Only `'responses'` is implemented; the chat-completions format is not ported. */
-  apiFormat?: string;
+  apiFormat?: string | null;
   transport?: HttpTransport;
   streamTransport?: HttpStreamTransport;
   binaryTransport?: HttpBinaryTransport;
@@ -108,11 +109,11 @@ export class OpenAI extends Provider {
   constructor(config: OpenAIConfig = {}) {
     super();
 
-    this.apiKey = config.apiKey ?? readEnv('OPENAI_API_KEY') ?? '';
-    this.url = config.url ?? readEnv('OPENAI_URL') ?? DEFAULT_URL;
-    this.organization = config.organization ?? readEnv('OPENAI_ORGANIZATION') ?? null;
-    this.project = config.project ?? readEnv('OPENAI_PROJECT') ?? null;
-    this.apiFormat = config.apiFormat ?? readEnv('OPENAI_API_FORMAT') ?? 'responses';
+    this.apiKey = configuredString(config.apiKey, 'OPENAI_API_KEY', '', '');
+    this.url = configuredString(config.url, 'OPENAI_URL', DEFAULT_URL);
+    this.organization = nullableString(config.organization, 'OPENAI_ORGANIZATION');
+    this.project = nullableString(config.project, 'OPENAI_PROJECT');
+    this.apiFormat = configuredString(config.apiFormat, 'OPENAI_API_FORMAT', 'responses', 'responses');
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
     this.#binaryTransport = config.binaryTransport ?? fetchBinaryTransport;
@@ -526,12 +527,6 @@ export class OpenAI extends Provider {
 
     return headers;
   }
-}
-
-function readEnv(name: string): string | undefined {
-  const value = process.env[name];
-
-  return value === undefined || value === '' ? undefined : value;
 }
 
 function describeHttpFailure(provider: string, status: number, body: unknown): string {

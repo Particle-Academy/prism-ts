@@ -72,7 +72,7 @@ describe('the opt-in guarded media fetch', () => {
         resolve: host => host === 'public.test' ? ['93.184.216.34'] : ['10.0.0.5'],
       } })).rejects.toMatchObject({ code: 'redirect_refused' });
       expect(fetch.mock.calls).toHaveLength(1);
-      expect(fetch).toHaveBeenCalledWith('https://public.test/x', { redirect: 'manual' });
+      expect(fetch).toHaveBeenCalledWith('https://public.test/x', { redirect: 'manual', signal: expect.any(AbortSignal) });
     });
 
   it('rechecks the same hostname at each hop', async () => {
@@ -140,9 +140,9 @@ describe('the opt-in guarded media fetch', () => {
     const image = Image.fromUrl('https://public.test/a/start', 'image/png');
     await image.fetchPublic({ resolver: publicResolver });
     expect(fetch.mock.calls).toEqual([
-      ['https://public.test/a/start', { redirect: 'manual' }],
-      ['https://public.test/next', { redirect: 'manual' }],
-      ['https://other.test/final', { redirect: 'manual' }],
+      ['https://public.test/a/start', { redirect: 'manual', signal: expect.any(AbortSignal) }],
+      ['https://public.test/next', { redirect: 'manual', signal: expect.any(AbortSignal) }],
+      ['https://other.test/final', { redirect: 'manual', signal: expect.any(AbortSignal) }],
     ]);
     expect(image.rawContent()).toEqual(new TextEncoder().encode('bytes'));
     expect(image.mimeType()).toBe('image/png');

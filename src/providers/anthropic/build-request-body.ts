@@ -33,7 +33,7 @@ const DEFAULT_THINKING_BUDGET = 1024;
  * What differs is `system`: it is a top-level field here, not a message, so
  * system prompts never enter `messages` at all.
  */
-export function buildRequestBody(request: TextRequest): JsonObject {
+export function buildRequestBody(request: TextRequest, defaultThinkingBudget = DEFAULT_THINKING_BUDGET): JsonObject {
   const body: JsonObject = {
     model: request.model(),
     messages: mapMessages(request.messages()),
@@ -52,7 +52,7 @@ export function buildRequestBody(request: TextRequest): JsonObject {
     // sending an empty array — which changes tool_choice defaults.
     tools: tools.length > 0 ? tools : null,
     tool_choice: mapToolChoice(request.toolChoice()),
-    thinking: resolveThinking(request),
+    thinking: resolveThinking(request, defaultThinkingBudget),
     metadata: request.providerOptions('metadata'),
     stop_sequences: request.providerOptions('stop_sequences'),
     // `effort` is Prism's name for it; Anthropic reads it from output_config.
@@ -64,14 +64,14 @@ export function buildRequestBody(request: TextRequest): JsonObject {
 }
 
 /** Native JSON schema mode; unsupported modes are refused before transport. */
-export function buildStructuredBody(request: StructuredRequest): JsonObject {
+export function buildStructuredBody(request: StructuredRequest, defaultThinkingBudget = DEFAULT_THINKING_BUDGET): JsonObject {
   if (isTruthyByReferenceRules(request.providerOptions('use_tool_calling'))) {
     throw PrismError.unsupportedProviderAction('Structured tool calling', 'Anthropic');
   }
   if (request.providerOptions('citations') === true) {
     throw PrismError.unsupportedProviderAction('Citations with native structured output', 'Anthropic');
   }
-  const body = buildRequestBody(request);
+  const body = buildRequestBody(request, defaultThinkingBudget);
   return {
     ...body,
     output_config: {
@@ -98,7 +98,7 @@ export function buildStructuredBody(request: StructuredRequest): JsonObject {
  * so does an empty map. Every other shape, `{ type: 'adaptive' }` included, is
  * sent as given, as the reference sends it.
  */
-function resolveThinking(request: TextRequest): JsonValue | null {
+function resolveThinking(request: TextRequest, defaultThinkingBudget: number): JsonValue | null {
   if (request.reasoningEnabled() === false) {
     return null;
   }
@@ -118,8 +118,12 @@ function resolveThinking(request: TextRequest): JsonValue | null {
     return null;
   }
 
-  if (thinking.type === 'adaptive') {
-    return thinking;
+  if (typeof thinking.type === 'string') {
+    const { enabled: _enabled, budgetTokens, ...native } = thinking;
+    if (native.type === 'enabled' && (native.budget_tokens === undefined || native.budget_tokens === null)) {
+      native.budget_tokens = typeof budgetTokens === 'number' && Number.isInteger(budgetTokens) ? budgetTokens : defaultThinkingBudget;
+    }
+    return native;
   }
 
   if (thinking.enabled === true) {
@@ -127,7 +131,7 @@ function resolveThinking(request: TextRequest): JsonValue | null {
 
     return {
       type: 'enabled',
-      budget_tokens: typeof budget === 'number' && Number.isInteger(budget) ? budget : DEFAULT_THINKING_BUDGET,
+      budget_tokens: typeof budget === 'number' && Number.isInteger(budget) ? budget : defaultThinkingBudget,
     };
   }
 
