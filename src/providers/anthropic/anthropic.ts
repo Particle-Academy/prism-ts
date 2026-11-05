@@ -19,14 +19,17 @@ import { buildRequestBody, buildStructuredBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
+import { anthropicBeta, configuredString, thinkingBudgetDefault } from '../../internal/provider-config.js';
 
 export interface AnthropicConfig {
   apiKey?: string;
-  url?: string;
+  url?: string | null;
   /** The `anthropic-version` header. Pinned, not floating — see below. */
   apiVersion?: string;
   /** Sent as `anthropic-beta` when set. */
   betaFeatures?: string | null;
+  /** Configured fallback; an integer per-request budget takes precedence. */
+  defaultThinkingBudget?: number | string | boolean | null;
   transport?: HttpTransport;
   streamTransport?: HttpStreamTransport;
 }
@@ -61,6 +64,8 @@ export class Anthropic extends Provider {
 
   readonly betaFeatures: string | null;
 
+  readonly defaultThinkingBudget: number;
+
   readonly #transport: HttpTransport;
 
   readonly #streamTransport: HttpStreamTransport;
@@ -68,16 +73,17 @@ export class Anthropic extends Provider {
   constructor(config: AnthropicConfig = {}) {
     super();
 
-    this.apiKey = config.apiKey ?? readEnv('ANTHROPIC_API_KEY') ?? '';
-    this.url = config.url ?? readEnv('ANTHROPIC_URL') ?? DEFAULT_URL;
-    this.apiVersion = config.apiVersion ?? readEnv('ANTHROPIC_API_VERSION') ?? DEFAULT_API_VERSION;
-    this.betaFeatures = config.betaFeatures ?? readEnv('ANTHROPIC_BETA_FEATURES') ?? null;
+    this.apiKey = configuredString(config.apiKey, 'ANTHROPIC_API_KEY', '');
+    this.url = configuredString(config.url, 'ANTHROPIC_URL', DEFAULT_URL, DEFAULT_URL);
+    this.apiVersion = configuredString(config.apiVersion, 'ANTHROPIC_API_VERSION', DEFAULT_API_VERSION);
+    this.betaFeatures = anthropicBeta(config.betaFeatures);
+    this.defaultThinkingBudget = thinkingBudgetDefault(config.defaultThinkingBudget);
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
-    return this.#send(request, buildRequestBody(request));
+    return this.#send(request, buildRequestBody(request, this.defaultThinkingBudget));
   }
 
   async #send(request: TextRequest, body: JsonObject): Promise<TextResponse> {
@@ -113,7 +119,7 @@ export class Anthropic extends Provider {
       url: `${withoutTrailingSlashes(this.url)}/messages`,
       method: 'POST',
       headers: { ...this.headers(), Accept: 'text/event-stream' },
-      body: canonicalJson({ ...buildRequestBody(request), stream: true }),
+      body: canonicalJson({ ...buildRequestBody(request, this.defaultThinkingBudget), stream: true }),
       clientOptions: request.clientOptions(),
     });
 
@@ -142,7 +148,7 @@ export class Anthropic extends Provider {
 
   /** Structured output through Anthropic's native output_config.format. */
   override async structured(request: StructuredRequest): Promise<StructuredResponse> {
-    return structuredFromTextResponse(await this.#send(request, buildStructuredBody(request)), {
+    return structuredFromTextResponse(await this.#send(request, buildStructuredBody(request, this.defaultThinkingBudget)), {
       nativeOutputFormat: true,
     });
   }
@@ -168,12 +174,6 @@ export class Anthropic extends Provider {
 
     return headers;
   }
-}
-
-function readEnv(name: string): string | undefined {
-  const value = process.env[name];
-
-  return value === undefined || value === '' ? undefined : value;
 }
 
 function describeHttpFailure(provider: string, status: number, body: unknown): string {

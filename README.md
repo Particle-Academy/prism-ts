@@ -110,11 +110,57 @@ console.log(response.usage.promptTokens, response.usage.completionTokens);
 ```
 
 Configuration is explicit first, environment second — `OPENAI_API_KEY`,
-`OPENAI_URL`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`:
+`OPENAI_URL`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`, `OPENAI_API_FORMAT`:
 
 ```ts
 Prism.text().using('openai', 'gpt-4o', { apiKey: 'sk-…', transport });
 ```
+
+Omitting a field (`undefined`) reads its environment value, then the provider
+default. An explicit empty string stays empty. Explicit `null` has the PHP
+reference's field-specific behavior:
+
+| Field | Explicit `null` |
+| --- | --- |
+| OpenAI `apiKey` / `apiFormat` | `''` / `'responses'` |
+| OpenAI `organization` / `project`; Anthropic `betaFeatures` | Remains `null`; environment is ignored |
+| Anthropic `url` | Default Anthropic URL |
+| Anthropic `apiKey` / `apiVersion`; OpenAI `url`; Mistral `apiKey` / `url` | Refused with `TypeError` (also excluded by the TypeScript types) |
+
+Environment strings follow Laravel's reserved spellings: case-insensitive
+`null`, `true`, `false`, `empty` and their parenthesized forms become scalars;
+matching surrounding quotes are removed. Direct constructor strings remain
+literal. A non-string environment scalar is refused for a string-only field.
+OpenAI supports only the Responses format; selecting another format still
+raises `unsupported_provider_action` before HTTP.
+
+Anthropic reads `ANTHROPIC_API_KEY`, `ANTHROPIC_URL`, `ANTHROPIC_API_VERSION`
+and canonical `ANTHROPIC_BETA`. The old `ANTHROPIC_BETA_FEATURES` is used only
+when neither explicit `betaFeatures` nor canonical `ANTHROPIC_BETA` is present.
+Consuming that fallback emits one value-free deprecation warning per process.
+An explicit `null` or empty canonical value prevents fallback consumption.
+
+`defaultThinkingBudget` overrides `ANTHROPIC_DEFAULT_THINKING_BUDGET` (default
+1024). The configured scalar is cast as in PHP. An integer per-request thinking
+budget takes precedence; a string or fractional per-request budget uses the
+configured fallback. No extra minimum budget is imposed by this port.
+
+Default fetch transports use seconds: a nonstream request has a **30-second
+total deadline**, including its body. A stream has a **30-second connection and
+header deadline**, followed by Prism's **60-second idle limit per pending body
+read**. It has no overall stream lifetime deadline. Request client options
+`timeout` and `read_timeout` override those respective limits; zero disables
+that limit. `signal` accepts caller cancellation through headers and body.
+Injected transports own their timeout and cancellation behavior.
+
+`fetchPublic({ timeout, signal })` applies its total budget across address
+checks, redirects and body consumption. Its existing address policy and body
+cap still apply; Node fetch does not pin the checked DNS answers to a connection.
+
+Stream event timestamps now default to **Unix seconds**, including serialized
+events. To construct a JavaScript date, use `new Date(event.timestamp * 1000)`.
+An explicitly supplied timestamp is retained, including zero. See
+[CHANGELOG.md](CHANGELOG.md) for the compatibility change.
 
 `transport` is the seam between the provider and the network. Pass one and no
 test ever touches a socket:

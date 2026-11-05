@@ -7,6 +7,7 @@
  */
 
 import { foldHeaderName } from './header-names.js';
+import { abortable, DEFAULT_STREAM_IDLE_TIMEOUT, RequestDeadline, timeoutSeconds, withRequestDeadline } from './deadline.js';
 
 export interface HttpRequest {
   url: string;
@@ -32,14 +33,16 @@ export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>;
 
 /** The default transport: `fetch`, available as a global from Node 18. */
 export const fetchTransport: HttpTransport = async (request: HttpRequest): Promise<HttpResponse> => {
-  const response = await fetch(request.url, {
+  return withRequestDeadline(request.clientOptions, async (signal) => {
+  const response = await abortable(fetch(request.url, {
     method: request.method,
     headers: { ...request.headers },
     body: request.body,
     ...request.clientOptions,
-  });
+    signal,
+  }), signal);
 
-  const rawBody = await response.text();
+  const rawBody = await abortable(response.text(), signal);
   const headers: Record<string, string> = {};
 
   response.headers.forEach((value, name) => {
@@ -52,6 +55,7 @@ export const fetchTransport: HttpTransport = async (request: HttpRequest): Promi
     body: parseJson(rawBody),
     rawBody,
   };
+  });
 };
 
 function parseJson(body: string): unknown {
@@ -92,12 +96,18 @@ export type HttpStreamTransport = (request: HttpRequest) => Promise<HttpStreamRe
 export const fetchStreamTransport: HttpStreamTransport = async (
   request: HttpRequest,
 ): Promise<HttpStreamResponse> => {
-  const response = await fetch(request.url, {
+  const idleTimeout = timeoutSeconds(request.clientOptions.read_timeout, DEFAULT_STREAM_IDLE_TIMEOUT);
+  const deadline = new RequestDeadline(timeoutSeconds(request.clientOptions.timeout), request.clientOptions.signal as AbortSignal | null | undefined);
+  try {
+  deadline.signal.throwIfAborted();
+  const response = await abortable(fetch(request.url, {
     method: request.method,
     headers: { ...request.headers },
     body: request.body,
     ...request.clientOptions,
-  });
+    signal: deadline.signal,
+  }), deadline.signal);
+  deadline.clear();
 
   const headers: Record<string, string> = {};
 
@@ -105,22 +115,47 @@ export const fetchStreamTransport: HttpStreamTransport = async (
     headers[foldHeaderName(name)] = value;
   });
 
-  return { status: response.status, headers, chunks: readChunks(response) };
+  return { status: response.status, headers, chunks: readChunks(response, deadline, idleTimeout) };
+  } catch (error) {
+    deadline.clear();
+    throw error;
+  }
 };
 
-async function* readChunks(response: Response): AsyncGenerator<string> {
+function readChunks(response: Response, deadline: RequestDeadline, idleTimeout: number): AsyncGenerator<string> {
+  const state = { started: false };
+  const iterator = readChunksGenerator(response, deadline, state, idleTimeout);
+  const finish = iterator.return.bind(iterator);
+  const fail = iterator.throw.bind(iterator);
+  const closeUnstarted = async (): Promise<void> => {
+    if (!state.started) {
+      deadline.clear();
+      void response.body?.cancel().catch(() => undefined);
+    }
+  };
+  iterator.return = async (value) => { await closeUnstarted(); return finish(value); };
+  iterator.throw = async (error) => { await closeUnstarted(); return fail(error); };
+  return iterator;
+}
+
+async function* readChunksGenerator(response: Response, deadline: RequestDeadline, state: { started: boolean }, idleTimeout: number): AsyncGenerator<string> {
+  state.started = true;
   if (response.body === null) {
     return;
   }
 
   const decoder = new TextDecoder();
   const reader = response.body.getReader();
+  let completed = false;
 
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      deadline.arm(idleTimeout);
+      const { done, value } = await abortable(reader.read(), deadline.signal);
+      deadline.clear();
 
       if (done) {
+        completed = true;
         // Flush whatever the decoder is holding: a multi-byte character split
         // across two network chunks is only complete once the stream ends.
         const tail = decoder.decode();
@@ -135,6 +170,8 @@ async function* readChunks(response: Response): AsyncGenerator<string> {
       yield decoder.decode(value, { stream: true });
     }
   } finally {
+    deadline.clear();
+    if (!completed) void reader.cancel().catch(() => undefined);
     // Releases the lock even when the consumer abandons the generator, which
     // is the ordinary case for a browser that navigated away mid-answer.
     reader.releaseLock();
@@ -222,12 +259,14 @@ export const fetchBinaryTransport: HttpBinaryTransport = async (request): Promis
     delete headers['content-type'];
   }
 
-  const response = await fetch(request.url, {
+  return withRequestDeadline(request.clientOptions, async (signal) => {
+  const response = await abortable(fetch(request.url, {
     method: request.method,
     headers,
     body,
     ...request.clientOptions,
-  });
+    signal,
+  }), signal);
 
   const responseHeaders: Record<string, string> = {};
 
@@ -238,6 +277,7 @@ export const fetchBinaryTransport: HttpBinaryTransport = async (request): Promis
   return {
     status: response.status,
     headers: responseHeaders,
-    bytes: new Uint8Array(await response.arrayBuffer()),
+    bytes: new Uint8Array(await abortable(response.arrayBuffer(), signal)),
   };
+  });
 };

@@ -40,7 +40,7 @@ export abstract class StreamEvent {
 
   constructor(id?: string, timestamp?: number) {
     this.id = id ?? eventId();
-    this.timestamp = timestamp ?? Date.now();
+    this.timestamp = timestamp ?? Math.floor(Date.now() / 1000);
   }
 
   abstract type(): StreamEventType;

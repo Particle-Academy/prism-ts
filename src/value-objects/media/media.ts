@@ -4,6 +4,7 @@ import type { JsonObject } from '../../json.js';
 import { PrismError, PrismUrlRefused } from '../../errors.js';
 import { assertPublicUrl, dnsHostResolver } from '../../internal/public-url.js';
 import type { HostResolver } from '../../internal/public-url.js';
+import { abortable, withRequestDeadline } from '../../http/deadline.js';
 
 export interface PublicFetchOptions {
   resolver?: HostResolver;
@@ -14,6 +15,9 @@ export interface PublicFetchOptions {
    * `media_too_large` while the body streams, so an oversized answer is never held whole (G-90).
    */
   maxBytes?: number;
+  /** Total seconds across checks, redirects and the body. Zero disables it. */
+  timeout?: number;
+  signal?: AbortSignal;
 }
 
 /** The kinds of payload a message part can be, minus text. */
@@ -242,18 +246,22 @@ export abstract class Media {
       throw PrismError.unfetchableMedia('this payload has no url');
     }
 
-    const response = await globalThis.fetch(this.url);
+    const url = this.url;
+    return withRequestDeadline({}, async (signal) => {
+      const response = await abortable(globalThis.fetch(url, { signal }), signal);
 
-    if (!response.ok) {
-      throw PrismError.unfetchableMedia(`${safeUrl(this.url)} responded ${response.status}`);
-    }
+      if (!response.ok) {
+        void response.body?.cancel().catch(() => undefined);
+        throw PrismError.unfetchableMedia(`${safeUrl(url)} responded ${response.status}`);
+      }
 
-    this.setRawContent(
-      new Uint8Array(await response.arrayBuffer()),
-      this.#mimeType ?? response.headers.get('content-type'),
-    );
+      this.setRawContent(
+        new Uint8Array(await abortable(response.arrayBuffer(), signal)),
+        this.#mimeType ?? response.headers.get('content-type'),
+      );
 
-    return this;
+      return this;
+    });
   }
 
   /**
@@ -274,41 +282,45 @@ export abstract class Media {
       throw new RangeError('maxBytes must be a nonnegative safe integer.');
     }
     const resolver = options.resolver ?? dnsHostResolver;
-    let url = this.url;
+    const initialUrl = this.url;
+    return withRequestDeadline({ timeout: options.timeout, signal: options.signal }, async (signal) => {
+    let url = initialUrl;
     for (let hop = 0; hop <= maxRedirects; hop++) {
       try {
-        await assertPublicUrl(url, resolver);
+        await abortable(assertPublicUrl(url, resolver), signal);
       } catch (error) {
         if (hop > 0 && error instanceof PrismUrlRefused) {
-          throw new PrismUrlRefused('redirect_refused', `${safeUrl(this.url)} redirected to a refused destination.`);
+          throw new PrismUrlRefused('redirect_refused', `${safeUrl(initialUrl)} redirected to a refused destination.`);
         }
         throw error;
       }
-      const response = await globalThis.fetch(url, { redirect: 'manual' });
+      signal.throwIfAborted();
+      const response = await abortable(globalThis.fetch(url, { redirect: 'manual', signal }), signal);
       const location = response.headers.get('location');
       if (response.status >= 300 && response.status < 400 && location !== null && location !== '') {
         // We do not consume redirect bodies; release their transport before
         // following another hop or refusing the redirect chain.
-        await response.body?.cancel();
+        await abortable(response.body?.cancel() ?? Promise.resolve(), signal);
         if (hop === maxRedirects) {
-          throw new PrismUrlRefused('too_many_redirects', `${safeUrl(this.url)} redirected more than ${maxRedirects} times.`);
+          throw new PrismUrlRefused('too_many_redirects', `${safeUrl(initialUrl)} redirected more than ${maxRedirects} times.`);
         }
         try {
           url = new URL(location, url).href;
         } catch {
-          throw new PrismUrlRefused('redirect_refused', `${safeUrl(this.url)} redirected to an invalid URL.`);
+          throw new PrismUrlRefused('redirect_refused', `${safeUrl(initialUrl)} redirected to an invalid URL.`);
         }
         continue;
       }
       if (!response.ok) {
-        await response.body?.cancel();
+        await abortable(response.body?.cancel() ?? Promise.resolve(), signal);
         throw PrismError.unfetchableMedia(`${safeUrl(url)} responded ${response.status}`);
       }
-      this.setRawContent(await boundedBody(response, maxBytes, safeUrl(url)), this.#mimeType ?? response.headers.get('content-type'));
+      this.setRawContent(await abortable(boundedBody(response, maxBytes, safeUrl(url)), signal), this.#mimeType ?? response.headers.get('content-type'));
       return this;
     }
     // Every redirect at the bound throws above; this is unreachable.
     throw new PrismUrlRefused('too_many_redirects', 'The guarded fetch exhausted its redirect bound.');
+    });
   }
 
   /**
