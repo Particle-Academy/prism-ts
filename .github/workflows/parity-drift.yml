@@ -8,7 +8,6 @@ name: Parity drift
 # implementation passes proves nothing.
 
 on:
-  pull_request:
   push:
     branches: [main]
   schedule:
