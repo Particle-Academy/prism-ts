@@ -108,8 +108,8 @@ describe('the corpus itself', () => {
     // Keep exact inventories for the current release and this candidate. This
     // lets the runtime land before the companion corpus without accepting a
     // missing new suite in 0.1.14 or an unknown future corpus version.
-    expect(['0.1.13', '0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21']).toContain(corpus.version);
-    const structuredSuites = ['0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21'].includes(corpus.version)
+    expect(['0.1.13', '0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21', '0.1.22']).toContain(corpus.version);
+    const structuredSuites = ['0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21', '0.1.22'].includes(corpus.version)
       ? ['mistral-structured-response', 'structured-response']
       : [];
 
@@ -131,7 +131,7 @@ describe('the corpus itself', () => {
       'provider-replay-request',
       'value-object-roundtrip',
       'text-errors',
-      ...(['0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21'].includes(corpus.version) ? ['stream-failure-usage'] : []),
+      ...(['0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21', '0.1.22'].includes(corpus.version) ? ['stream-failure-usage'] : []),
       ...structuredSuites,
     ].sort());
 
