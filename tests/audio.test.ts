@@ -125,7 +125,7 @@ describe('speech to text', () => {
     expect(calls[0]?.multipart?.files[0]?.filename).toBe('interview.mp3');
   });
 
-  it('refuses an input with no bytes rather than posting an empty file', () => {
+  it('refuses an input with no bytes rather than posting an empty file', async () => {
     // A url payload is not fetched implicitly, so it has nothing to upload. An
     // empty file comes back as a transcript of silence.
     expect(() =>
@@ -135,7 +135,7 @@ describe('speech to text', () => {
         .toSpeechToTextRequest(),
     ).not.toThrow();
 
-    expect(() =>
+    await expect(() =>
       Prism.audio()
         .using('openai', 'whisper-1', { apiKey: 'sk-test' })
         .withInput(Audio.fromUrl('https://example.test/a.mp3'))

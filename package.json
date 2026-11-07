@@ -37,11 +37,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.3.0",
-    "eslint": "^10.9.1",
-    "globals": "^17.11.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.68.0",
-    "vitest": "^4.1.12"
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  },
+  "//": "G190: Remove the minimatch override when ESLint accepts minimatch 11 or newer, then verify the lint file census and diagnostics again.",
+  "overrides": {
+    "minimatch": "11.0.5"
   }
 }
