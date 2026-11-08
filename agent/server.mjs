@@ -11,7 +11,7 @@
 
 import { createServer } from 'node:http';
 
-import { LANGUAGE, tools } from './agent.mjs';
+import { LANGUAGE, PaidCallNotAuthorisedError, tools } from './agent.mjs';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const PORT = Number(process.env.PRISM_AGENT_PORT ?? 7411);
@@ -79,6 +79,14 @@ async function dispatch(method, params) {
         isError: false,
       };
     } catch (error) {
+      if (error instanceof PaidCallNotAuthorisedError) {
+        const refusal = { ok: false, code: error.code, reason: error.message };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(refusal) }],
+          structuredContent: refusal,
+          isError: true,
+        };
+      }
       // A tool that fails returns isError on the RESULT, not a JSON-RPC error.
       // The distinction matters: the call succeeded, the work did not.
       return {
