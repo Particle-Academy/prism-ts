@@ -22,14 +22,8 @@ export function mapTools(tools: readonly Tool[]): JsonObject[] {
       description: tool.description(),
     };
 
-    if (tool.hasParameters()) {
-      mapped.parameters = {
-        type: 'object',
-        properties: tool.parametersAsObject(),
-        // `required` may legitimately be empty — the falsiness filter only ever
-        // runs over the TOP level of the mapped tool, never inside it.
-        required: [...tool.requiredParameters()],
-      };
+    if (tool.hasParameters() || Boolean(tool.providerOptions('strict'))) {
+      mapped.parameters = tool.parametersAsSchema(true);
     }
 
     mapped.strict = Boolean(tool.providerOptions('strict'));
