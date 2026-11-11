@@ -31,6 +31,8 @@ export type PrismErrorCode =
   | 'unsupported_provider_action'
   /** A tool call's `arguments` string is not valid JSON. */
   | 'malformed_tool_call_arguments'
+  /** A strict tool schema violates a provider's required root properties. */
+  | 'invalid_tool_schema'
   /** A value in the message list is not a message this port knows how to map. */
   | 'unknown_message_type'
   /** The response finished on tool calls; the tool-execution loop is not ported. */

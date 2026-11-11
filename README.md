@@ -78,6 +78,14 @@ pinned by fixtures.
 Failures carry a stable `code` (`PrismError.code`). The prose is not part of the
 contract and will change; the code will not.
 
+Tools with `.withProviderOptions({ strict: true })` send a closed root object
+schema for OpenAI Responses and Anthropic, including tools without parameters.
+OpenAI requires every root parameter to be required; an optional root field
+raises `PrismError` with code `invalid_tool_schema` before HTTP. Make that field
+required (and nullable if needed), or turn strict off. Anthropic retains declared
+optional fields. Nested schemas remain exactly as declared: callers must make
+those schemas valid for their provider. Mistral's mapping is unchanged.
+
 Structured responses retain `structured`, `steps`, `raw`, and the tool carrier
 arrays when serialized with `toObject()`. Each exported `StructuredStep` also
 retains its completed `messages` and per-step parsed value. Preserve that

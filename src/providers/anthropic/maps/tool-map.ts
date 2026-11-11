@@ -15,10 +15,7 @@ export function mapTools(tools: readonly Tool[]): JsonObject[] {
   return tools.map((tool) => ({
     name: tool.name(),
     description: tool.description(),
-    input_schema: {
-      type: 'object',
-      properties: tool.hasParameters() ? tool.parametersAsObject() : {},
-      required: [...tool.requiredParameters()],
-    },
+    input_schema: tool.parametersAsSchema(),
+    ...(tool.providerOptions('strict') ? { strict: true } : {}),
   }));
 }

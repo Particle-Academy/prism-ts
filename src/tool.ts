@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from './json.js';
 import { getByPath } from './json.js';
+import { PrismError } from './errors.js';
 import type { Schema } from './schema/index.js';
 import { BooleanSchema, NumberSchema, StringSchema } from './schema/index.js';
 
@@ -101,6 +102,29 @@ export class Tool {
     }
 
     return properties;
+  }
+
+  /** Close only the generated root. Nested schemas remain the caller's declaration. */
+  parametersAsSchema(requireAllProperties = false): JsonObject {
+    const strict = Boolean(this.providerOptions('strict'));
+
+    if (strict && requireAllProperties) {
+      const optional = [...this.#parameters.keys()].filter((name) => !this.#requiredParameters.includes(name));
+
+      if (optional.length > 0) {
+        throw new PrismError(
+          'invalid_tool_schema',
+          `Strict tool [${this.#name}] has optional parameters [${optional.join(', ')}]. This provider requires every property to be required. Make them required (nullable if needed) or turn strict off.`,
+        );
+      }
+    }
+
+    return {
+      type: 'object',
+      properties: this.parametersAsObject(),
+      required: [...this.#requiredParameters],
+      ...(strict ? { additionalProperties: false } : {}),
+    };
   }
 
   providerOptions(): JsonObject;
