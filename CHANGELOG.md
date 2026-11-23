@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.11.0 — 2026-11-23
+
+BREAKING CHANGE: `parsedArguments()` throws `malformed_tool_call_arguments` for a number, string, boolean, non-empty list or integer-keyed map. It used to return an empty object for the first four. An empty string, the text `0`, `null`, `[]` and `{}` still mean no arguments. Code that reads the arguments before running a tool should catch the error and return it to the model as a tool error, or check `hasMalformedArguments()` first.
+BREAKING CHANGE: Arguments the PHP reference cannot decode are refused too: `NaN` and `Infinity`, a lone surrogate, and more than 500 nested containers.
+BREAKING CHANGE: A stored tool call with unusable arguments and no tool result now fails when it is sent. Answer it with a tool result first.
+- `ToolCall.hasMalformedArguments()` says whether a call's arguments are unusable.
+- Once a later tool result answers such a call, it is sent back with empty arguments in each provider's own shape (OpenAI, Anthropic, Mistral), including stored OpenAI output items. The caller's messages are not modified.
+- A call that nothing has answered fails at mapping with `malformed_tool_call_arguments` on every provider, now including Mistral.
+- Tests now check that core has no approval check and never runs a tool handler.
+
 ## 0.10.0 — 2026-11-23
 
 BREAKING CHANGE: Credentials are now scoped to their configured endpoint; a per-call URL override must supply its own key. Environment credentials (`OPENAI_API_KEY`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`) apply only when the effective URL is the environment's URL or the provider default. Callers that pass a custom `url` and relied on the environment key must pass `apiKey` alongside it.
