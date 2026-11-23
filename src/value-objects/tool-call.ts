@@ -46,50 +46,46 @@ export class ToolCall {
    *
    * An empty string and the string `'0'` both decode to `{}` — the reference
    * short-circuits on falsiness before it ever calls its JSON decoder, and both
-   * of those are falsy there.
+   * of those are falsy there. A JSON `null` and an empty list also mean none
+   * were given. Anything else that is not a map of named values is refused
+   * rather than read as no arguments, so a tool is never run on an empty object
+   * the model did not send.
    *
    * @throws PrismError code `malformed_tool_call_arguments`
    */
   parsedArguments(): JsonObject {
-    if (typeof this.arguments !== 'string') {
-      return this.arguments;
-    }
-
     if (this.arguments === '' || this.arguments === '0') {
       return {};
     }
 
-    const decoded = this.#decode(this.arguments);
-
-    return isJsonObject(decoded) ? decoded : {};
-  }
-
-  /**
-   * Whether the arguments are unusable: not JSON, or not a map of named values.
-   * A JSON `null`, an empty list and an empty string all mean none were given.
-   * Integer-like keys count as unusable because the reference binds them to a
-   * handler by position, and all three languages classify a call the same way.
-   */
-  hasMalformedArguments(): boolean {
-    if (this.arguments === '' || this.arguments === '0') {
-      return false;
-    }
-
-    let decoded: unknown = this.arguments;
-
-    if (typeof this.arguments === 'string') {
-      try {
-        decoded = this.#decode(this.arguments);
-      } catch {
-        return true;
-      }
-    }
+    const decoded: unknown = typeof this.arguments === 'string' ? this.#decode(this.arguments) : this.arguments;
 
     if (decoded === null || (Array.isArray(decoded) && decoded.length === 0)) {
-      return false;
+      return {};
     }
 
-    return !isJsonObject(decoded) || Object.keys(decoded).some(isIntegerKey);
+    // Integer-like keys are refused because the reference binds them to a
+    // handler by position, and all three languages classify a call the same way.
+    if (!isJsonObject(decoded) || Object.keys(decoded).some(isIntegerKey)) {
+      throw PrismError.toolCallArgumentsNotAnObject(this.name);
+    }
+
+    return decoded;
+  }
+
+  /** Whether `parsedArguments()` would refuse these arguments. */
+  hasMalformedArguments(): boolean {
+    try {
+      this.parsedArguments();
+
+      return false;
+    } catch (error) {
+      if (error instanceof PrismError && error.code === 'malformed_tool_call_arguments') {
+        return true;
+      }
+
+      throw error;
+    }
   }
 
   /** This call with unusable arguments replaced by none; a valid call is unchanged. */

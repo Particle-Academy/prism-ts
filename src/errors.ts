@@ -229,6 +229,13 @@ export class PrismError extends Error {
     );
   }
 
+  static toolCallArgumentsNotAnObject(toolName: string): PrismError {
+    return new PrismError(
+      'malformed_tool_call_arguments',
+      `Tool call arguments for tool ${toolName} are not a JSON object.`,
+    );
+  }
+
   static unknownMessageType(description: string): PrismError {
     return new PrismError('unknown_message_type', `Could not map message type ${description}.`);
   }

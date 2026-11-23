@@ -155,3 +155,59 @@ describe('a tool call whose arguments could not be parsed', () => {
     expect(call.hasMalformedArguments()).toBe(malformed);
   });
 });
+
+describe('parsedArguments on arguments that are not named values', () => {
+  it.each([
+    ['a number', '5'],
+    ['a string', '"x"'],
+    ['true', 'true'],
+    ['false', 'false'],
+    ['a list', '[1,2]'],
+    ['an integer key', '{"0":"x"}'],
+    ['truncated JSON', MALFORMED],
+  ])('refuses %s rather than returning an empty object', (_name, args) => {
+    let returned: unknown = 'nothing returned';
+    let code: unknown = null;
+
+    try {
+      returned = new ToolCall('c', 'weather', args).parsedArguments();
+    } catch (error) {
+      code = error instanceof PrismError ? error.code : String(error);
+    }
+
+    expect(returned).toBe('nothing returned');
+    expect(code).toBe('malformed_tool_call_arguments');
+  });
+
+  it('refuses an already-decoded value with an integer key', () => {
+    expect(() => new ToolCall('c', 'weather', { 0: 'x' }).parsedArguments()).toThrow(PrismError);
+  });
+
+  it.each([['an empty string', ''], ['the string 0', '0'], ['null', 'null'], ['an empty list', '[]'], ['an empty object', '{}']])(
+    'still reads %s as no arguments',
+    (_name, args) => {
+      expect(new ToolCall('c', 'weather', args).parsedArguments()).toEqual({});
+    },
+  );
+
+  it.each(['openai', 'anthropic'] as const)('%s: refuses an unanswered non-object call at mapping', async (provider) => {
+    const { transport, calls } = recording(provider);
+    const failure = await failureOf(() => Prism.text().using(provider, 'm', { transport }).withMessages([
+      new UserMessage('Weather?'),
+      new AssistantMessage('', [new ToolCall('call_1', 'weather', '5', 'call_1')]),
+    ]).asText());
+
+    expect(failure).toContain('not a JSON object');
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each(['openai', 'anthropic', 'mistral'] as const)('%s: still replays an answered non-object call empty', async (provider) => {
+    const { transport, calls } = recording(provider);
+
+    expect(await failureOf(() => Prism.text().using(provider, 'm', { transport }).withMessages(answeredHistory('5')).asText())).toBeNull();
+
+    const sent = replayed(provider, calls[0]);
+
+    expect(typeof sent === 'string' ? JSON.parse(sent) : sent).toEqual({});
+  });
+});
