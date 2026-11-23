@@ -164,10 +164,11 @@ describe('provider registration', () => {
   });
 
   /*
-   * A provider name a human cannot read correctly is refused, not trimmed. The
-   * rule is spelled identically in the reference and prism-py: non-empty, and no
-   * whitespace, control (Cc) or format (Cf) character, nor any codepoint of the
-   * G-36 set the human-plus confirmation guard normalises.
+   * A provider name is a positive ASCII allow-list,
+   * ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$, spelled identically in the reference
+   * and prism-py. It replaces a forbidden-character test that relied on each
+   * language's Unicode tables. Look-alikes, padding and invisible codepoints
+   * are refused, never trimmed or folded.
    */
   it.each([
     ['empty', ''],
@@ -188,6 +189,16 @@ describe('provider registration', () => {
     ['word joiner (Cf, outside G-36)', 'openai\u2060'],
     ['soft hyphen (Cf)', 'open\u00ADai'],
     ['lone surrogate', 'openai\uD800'],
+    ['Cyrillic o homoglyph', '\u043Epenai'],
+    ['Cyrillic a homoglyph', 'open\u0430i'],
+    ['full-width', '\uFF4F\uFF50\uFF45\uFF4E\uFF41\uFF49'],
+    ['Latin-1 letter', 'caf\u00E9'],
+    ['leading hyphen', '-openai'],
+    ['leading dot', '.openai'],
+    ['leading underscore', '_openai'],
+    ['colon', 'acme:edge'],
+    ['slash', 'acme/edge'],
+    ['65 characters', 'a'.repeat(65)],
   ])('refuses a provider name with %s', (_label, name) => {
     expect(() => registerProvider(name, stub)).toThrow('not a valid provider name');
     // Refused even when replacement is explicit: replace does not license a name.
@@ -195,7 +206,7 @@ describe('provider registration', () => {
     expect(registeredProviders()).not.toContain(name);
   });
 
-  it.each(['credential-scope-plain', 'my_provider.v2', 'acme:edge', 'caf\u00E9'])(
+  it.each(['credential-scope-plain', 'my_provider.v2', '0day', 'q', 'b'.repeat(64)])(
     'still accepts the ordinary custom provider name %s',
     (name) => {
       const marker = { marker: name } as unknown as Provider;
@@ -203,4 +214,82 @@ describe('provider registration', () => {
       expect(resolveProvider(name)).toBe(marker);
     },
   );
+
+  // A built-in name passes the allow-list: it reaches the collision check.
+  it.each(['anthropic', 'mistral', 'openai'])('treats the built-in name %s as a valid name', (name) => {
+    expect(() => registerProvider(name, stub)).toThrow('already registered');
+  });
+});
+
+/*
+ * A url carrying whitespace or a control character anywhere is refused before
+ * any request, whether it is passed per call or configured in the environment.
+ * The forbidden set is spelled by codepoint, identically in the reference and
+ * prism-py: every Cc control (U+0000..U+001F, U+007F..U+009F), every Unicode
+ * White_Space codepoint, and the G-36 zero-widths U+200B..U+200D and U+FEFF.
+ * The error names neither the url nor the key.
+ */
+const dirtyUrls: Array<[string, string]> = [
+  ['padded both ends (cs-0016)', ' https://api.openai.com/v1 '],
+  ['leading space', ' https://api.openai.com/v1'],
+  ['trailing space', 'https://api.openai.com/v1 '],
+  ['interior space', 'https://api.openai.com/v1 x'],
+  ['tab', 'https://api.openai.com/v1\t'],
+  ['newline', 'https://api.openai.com/v1\n'],
+  ['carriage return', '\rhttps://api.openai.com/v1'],
+  ['NUL', 'https://api.openai.com\u0000/v1'],
+  ['DEL', 'https://api.openai.com/v1\u007F'],
+  ['C1 control', 'https://api.openai.com/v1\u009B'],
+  ['NEL', 'https://api.openai.com/v1\u0085'],
+  ['no-break space', '\u00A0https://api.openai.com/v1'],
+  ['ideographic space', 'https://api.openai.com/v1\u3000'],
+  ['zero-width space', 'https://api.openai.com\u200B/v1'],
+  ['BOM prefix', '\uFEFFhttps://api.openai.com/v1'],
+];
+
+async function attempt(name: string, config: Record<string, unknown>): Promise<{ sent: number; error: unknown }> {
+  let sent = 0;
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    sent += 1;
+    return new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } });
+  }));
+  let error: unknown = null;
+  try {
+    await Prism.text().using(name, 'fixture-model', config).withPrompt('hi').asText();
+  } catch (caught) {
+    error = caught;
+  }
+  return { sent, error };
+}
+
+describe.each(providers)('$name url hygiene', ({ name, keyEnv, urlEnv }) => {
+  it.each(dirtyUrls)('refuses a per-call url with %s before any request', async (_label, url) => {
+    withEnvironment({ [keyEnv]: `env-secret-${name}` });
+    const { sent, error } = await attempt(name, { url });
+    expect(sent).toBe(0);
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toContain('url must not contain whitespace or control characters');
+    expect(message).not.toContain('openai.com');
+    expect(message).not.toContain(`env-secret-${name}`);
+  });
+
+  it('refuses an environment url with a trailing newline before any request', async () => {
+    withEnvironment({ [keyEnv]: `env-secret-${name}`, [urlEnv]: 'https://gateway.example/v1\n' });
+    const { sent, error } = await attempt(name, {});
+    expect(sent).toBe(0);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('url must not contain whitespace or control characters');
+    expect((error as Error).message).not.toContain('gateway.example');
+  });
+});
+
+describe('custom provider url hygiene', () => {
+  it('refuses a padded url before the factory runs', () => {
+    let called = false;
+    registerProvider('credential-scope-padded', () => { called = true; return {} as Provider; });
+    expect(() => resolveProvider('credential-scope-padded', { url: ' https://configured.example/v1' }))
+      .toThrow('url must not contain whitespace or control characters');
+    expect(called).toBe(false);
+  });
 });
