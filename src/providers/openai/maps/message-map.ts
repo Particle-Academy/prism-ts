@@ -6,6 +6,8 @@ import type { ToolCall } from '../../../value-objects/tool-call.js';
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
 import { mapDocument, mapImage } from './media-map.js';
 import { replayableItems } from '../replay.js';
+import { replayableMessages } from '../../../value-objects/messages/replayable-messages.js';
+import { ToolCall as ToolCallValue } from '../../../value-objects/tool-call.js';
 
 /**
  * Map messages onto the Responses API's flat `input` array.
@@ -30,7 +32,7 @@ export function mapMessages(
 ): JsonValue[] {
   const items: JsonValue[] = [];
 
-  for (const message of [...systemPrompts, ...messages]) {
+  for (const message of [...systemPrompts, ...replayableMessages(messages)]) {
     switch (message.type) {
       case 'system':
         items.push({ role: 'system', content: message.content });
@@ -64,7 +66,12 @@ export function mapMessages(
 function mapAssistantMessage(message: AssistantMessage, items: JsonValue[]): void {
   const replay = message.additionalContent.output_items;
   if (Array.isArray(replay) && replay.length > 0) {
-    items.push(...replayableItems(replay));
+    // The same replay every other path sends for unusable arguments.
+    items.push(...replayableItems(replay).map((item) => (
+      item.type === 'function_call'
+        ? { ...item, arguments: new ToolCallValue('', '', ToolCallValue.storableArguments(item.arguments)).replayableArgumentsText() }
+        : item
+    )));
     return;
   }
   if (message.toolCalls.length > 0) {

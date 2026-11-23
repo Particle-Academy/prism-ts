@@ -176,7 +176,7 @@ function mapToolCalls(message: JsonObject): ToolCall[] {
         // A JSON STRING on the wire, like OpenAI's chat completions and unlike
         // Anthropic's decoded object. Kept as the string; `parsedArguments()`
         // is the one place it is decoded.
-        typeof fn.arguments === 'string' ? fn.arguments : isJsonObject(fn.arguments) ? fn.arguments : '{}',
+        fn.arguments === undefined ? '{}' : ToolCall.storableArguments(fn.arguments),
         null,
       );
     });

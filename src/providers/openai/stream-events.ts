@@ -71,7 +71,7 @@ function toolCallEvent(payload: JsonObject): StreamEvent | null {
   }
 
   return new ToolCallEvent(
-    new ToolCall(readString(item.call_id) || readString(item.id), readString(item.name), readString(item.arguments)),
+    new ToolCall(readString(item.call_id) || readString(item.id), readString(item.name), ToolCall.storableArguments(item.arguments)),
     readString(payload.item_id) || readString(item.id),
   );
 }

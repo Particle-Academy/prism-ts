@@ -5,6 +5,7 @@ import type { AssistantMessage, Message, SystemMessage, ToolResultMessage } from
 import type { ToolResultValue } from '../../../value-objects/tool-result.js';
 import { mapDocument, mapImage } from './media-map.js';
 import { replayContentBlocks } from '../replay.js';
+import { replayableMessages } from '../../../value-objects/messages/replayable-messages.js';
 
 /**
  * Map messages onto Anthropic's `messages` array.
@@ -28,7 +29,7 @@ import { replayContentBlocks } from '../replay.js';
 export function mapMessages(messages: readonly Message[]): JsonValue[] {
   const items: JsonObject[] = [];
 
-  for (const message of messages) {
+  for (const message of replayableMessages(messages)) {
     switch (message.type) {
       case 'system':
         // Reaching here means a system message was passed as a MESSAGE rather
