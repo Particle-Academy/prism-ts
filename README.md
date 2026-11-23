@@ -157,6 +157,10 @@ endpoint. A different scheme, host, port, path or query is not.
 
 `registerProvider()` refuses a key that is already registered — a built-in such
 as `openai`, or one registered earlier — unless `{ replace: true }` is passed.
+Keys are compared case-insensitively, so `OpenAI` collides with `openai`. It
+also throws for an empty key or one containing whitespace, control characters,
+or invisible characters such as a zero-width space, even with
+`{ replace: true }`. The key is not trimmed.
 
 Anthropic reads `ANTHROPIC_API_KEY`, `ANTHROPIC_URL`, `ANTHROPIC_API_VERSION`
 and canonical `ANTHROPIC_BETA`. The old `ANTHROPIC_BETA_FEATURES` is used only

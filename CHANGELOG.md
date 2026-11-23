@@ -3,7 +3,7 @@
 ## Unreleased
 
 BREAKING CHANGE: Credentials are now scoped to their configured endpoint; a per-call URL override must supply its own key. Environment credentials (`OPENAI_API_KEY`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`) apply only when the effective URL is the environment's URL or the provider default. Callers that pass a custom `url` and relied on the environment key must pass `apiKey` alongside it.
-BREAKING CHANGE: `registerProvider()` refuses a key that is already registered, including built-in providers, unless `{ replace: true }` is passed.
+BREAKING CHANGE: `registerProvider()` refuses a key that is already registered, including built-in providers, unless `{ replace: true }` is passed. Keys are compared case-insensitively, and an empty key or one containing whitespace, control, format or invisible characters is refused even with `{ replace: true }`.
 
 ## 0.9.0 — 2026-11-05
 
