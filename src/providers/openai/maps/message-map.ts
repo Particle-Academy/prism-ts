@@ -69,9 +69,7 @@ function mapAssistantMessage(message: AssistantMessage, items: JsonValue[]): voi
     // The same replay every other path sends for unusable arguments.
     items.push(...replayableItems(replay).map((item) => (
       item.type === 'function_call'
-        && typeof item.arguments === 'string'
-        && new ToolCallValue('', '', item.arguments).hasMalformedArguments()
-        ? { ...item, arguments: '{}' }
+        ? { ...item, arguments: new ToolCallValue('', '', ToolCallValue.storableArguments(item.arguments)).replayableArgumentsText() }
         : item
     )));
     return;

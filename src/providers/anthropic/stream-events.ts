@@ -177,7 +177,7 @@ export class AnthropicStreamMapper {
     }
 
     if (readString(delta.type) === 'input_json_delta') {
-      block.text += readString(delta.partial_json);
+      block.text = ToolCall.appendArgumentFragment(block.text, delta.partial_json);
     }
 
     return null;

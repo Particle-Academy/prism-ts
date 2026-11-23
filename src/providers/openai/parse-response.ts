@@ -154,7 +154,7 @@ function mapToolCalls(output: readonly JsonValue[]): ToolCall[] {
         new ToolCall(
           readString(item.id, ''),
           readString(item.name, ''),
-          typeof item.arguments === 'string' || isJsonObject(item.arguments) ? item.arguments : '',
+          ToolCall.storableArguments(item.arguments),
           typeof item.call_id === 'string' ? item.call_id : null,
         ),
     );

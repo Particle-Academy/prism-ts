@@ -148,7 +148,7 @@ export class MistralStreamMapper {
       this.#toolCalls.set(index, {
         id: readString(raw.id, '') || existing.id,
         name: readString(fn.name, '') || existing.name,
-        args: existing.args + readString(fn.arguments, ''),
+        args: ToolCall.appendArgumentFragment(existing.args, fn.arguments),
       });
     }
   }

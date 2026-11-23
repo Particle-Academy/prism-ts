@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../json.js';
-import { isJsonObject } from '../json.js';
+import { canonicalJson, isJsonObject } from '../json.js';
 import { PrismError } from '../errors.js';
 
 /**
@@ -70,7 +70,56 @@ export class ToolCall {
       throw PrismError.toolCallArgumentsNotAnObject(this.name);
     }
 
+    // Admitted only if a follow-up request can carry it, in any language.
+    if (!canBeSentBack(decoded)) {
+      throw PrismError.malformedToolCallArguments(this.name);
+    }
+
     return decoded;
+  }
+
+  /**
+   * A provider's value as this class stores it. Null means none were given.
+   * Any other value that is neither text nor a map is held as a one-item list,
+   * the one form that is refused whatever the value was: `0` and `false` must
+   * not turn into "no arguments" on the way in.
+   */
+  static storableArguments(value: unknown): ToolCallArguments {
+    if (typeof value === 'string' || isJsonObject(value)) return value;
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value) && value.length === 0) return '[]';
+
+    return JSON.stringify([value]);
+  }
+
+  /**
+   * The accumulated text once a streamed fragment is added. A fragment that is
+   * not text makes the whole value unreadable, wherever it arrived: a leading
+   * `]` can never become valid JSON, whatever is appended after it.
+   */
+  static appendArgumentFragment(text: string, fragment: unknown): string {
+    if (fragment === null || fragment === undefined) return text;
+
+    return typeof fragment === 'string' ? text + fragment : `]${text}`;
+  }
+
+  /**
+   * The arguments as text for a provider field that carries them as written:
+   * the original text when it is valid JSON naming values, otherwise the same
+   * value encoded, and `{}` for no arguments or unusable ones.
+   */
+  replayableArgumentsText(): string {
+    if (typeof this.arguments === 'string' && !this.hasMalformedArguments() && Object.keys(this.parsedArguments()).length > 0) {
+      try {
+        JSON.parse(this.arguments);
+
+        return this.arguments;
+      } catch {
+        // Valid only after repair, so it is sent encoded.
+      }
+    }
+
+    return canonicalJson(this.withoutMalformedArguments().parsedArguments());
   }
 
   /** Whether `parsedArguments()` would refuse these arguments. */
@@ -114,10 +163,6 @@ export class ToolCall {
       }
     }
 
-    if (!decodesInEveryLanguage(decoded)) {
-      throw PrismError.malformedToolCallArguments(this.name);
-    }
-
     return decoded;
   }
 
@@ -138,7 +183,7 @@ export class ToolCall {
     return new ToolCall(
       typeof object.id === 'string' ? object.id : '',
       typeof object.name === 'string' ? object.name : '',
-      typeof args === 'string' || isJsonObject(args) ? args : '',
+      ToolCall.storableArguments(args),
       typeof object.result_id === 'string' ? object.result_id : null,
       typeof object.reasoning_id === 'string' ? object.reasoning_id : null,
       Array.isArray(object.reasoning_summary) ? object.reasoning_summary : null,
@@ -146,18 +191,30 @@ export class ToolCall {
   }
 }
 
-const MAX_JSON_DEPTH = 511;
+/**
+ * The deepest nesting accepted. A provider wraps the arguments in its own
+ * request envelope, and the reference encodes that request with a depth limit
+ * of 512, so the limit leaves room for the deepest envelope.
+ */
+const MAX_ARGUMENT_DEPTH = 500;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /**
- * The reference's decoder refuses a lone surrogate and nesting past 511 levels.
- * Walked with a stack, so deep input cannot overflow the call stack here.
+ * Whether a decoded value survives the encode a follow-up request uses, in
+ * every language: no non-finite number, no key starting with NUL, no lone
+ * surrogate, and no deeper than the limit. Walked with a stack, so deep input
+ * cannot overflow the call stack here.
  */
-function decodesInEveryLanguage(root: unknown): boolean {
+function canBeSentBack(root: JsonObject): boolean {
   const pending: [unknown, number][] = [[root, 1]];
 
   while (pending.length > 0) {
     const [value, depth] = pending.pop() as [unknown, number];
+
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return false;
+      continue;
+    }
 
     if (typeof value === 'string') {
       if (LONE_SURROGATE.test(value)) return false;
@@ -165,7 +222,7 @@ function decodesInEveryLanguage(root: unknown): boolean {
     }
 
     if (typeof value !== 'object' || value === null) continue;
-    if (depth > MAX_JSON_DEPTH) return false;
+    if (depth > MAX_ARGUMENT_DEPTH) return false;
 
     if (Array.isArray(value)) {
       for (const item of value) pending.push([item, depth + 1]);
@@ -173,9 +230,15 @@ function decodesInEveryLanguage(root: unknown): boolean {
     }
 
     for (const [key, item] of Object.entries(value)) {
-      if (LONE_SURROGATE.test(key)) return false;
+      if (key.startsWith('\u0000') || LONE_SURROGATE.test(key)) return false;
       pending.push([item, depth + 1]);
     }
+  }
+
+  try {
+    canonicalJson(root);
+  } catch {
+    return false;
   }
 
   return true;
@@ -183,7 +246,8 @@ function decodesInEveryLanguage(root: unknown): boolean {
 
 /** A key PHP would store as an integer: canonical decimal, within 64 bits. */
 function isIntegerKey(key: string): boolean {
-  if (!/^(0|-?[1-9][0-9]*)$/.test(key)) {
+  // Twenty characters is the longest 64-bit integer, with its sign.
+  if (key.length > 20 || !/^(0|-?[1-9][0-9]*)$/.test(key)) {
     return false;
   }
 
@@ -194,9 +258,9 @@ function isIntegerKey(key: string): boolean {
 
 /**
  * Escape raw control characters (0x00–0x1F) that appear inside JSON string
- * literals, and drop the ones that appear outside strings where they can never
- * be valid (raw tab, newline and carriage return between tokens are legal
- * whitespace and are kept).
+ * literals. Anything else is left as it is, so that the decode refuses it: a
+ * control character outside a string, or straight after a backslash, has no
+ * value it can be repaired to.
  */
 function escapeControlCharactersInStrings(json: string): string {
   let result = '';
@@ -207,11 +271,9 @@ function escapeControlCharactersInStrings(json: string): string {
     const code = char.codePointAt(0) ?? 0;
 
     if (code <= 0x1f) {
-      if (inString) {
-        result += CONTROL_ESCAPES[char] ?? `\\u${code.toString(16).padStart(4, '0')}`;
-      } else if (char === '\t' || char === '\n' || char === '\r') {
-        result += char;
-      }
+      result += inString && !escaped
+        ? CONTROL_ESCAPES[char] ?? `\\u${code.toString(16).padStart(4, '0')}`
+        : char;
 
       escaped = false;
 

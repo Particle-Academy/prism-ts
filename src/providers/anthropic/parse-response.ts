@@ -169,7 +169,7 @@ function mapToolCalls(content: readonly JsonValue[]): ToolCall[] {
           readString(block.id, ''),
           readString(block.name, ''),
           // An object on the wire, unlike the Responses API's JSON string.
-          isJsonObject(block.input) ? block.input : {},
+          block.input === undefined ? {} : ToolCall.storableArguments(block.input),
           null,
         ),
     );
