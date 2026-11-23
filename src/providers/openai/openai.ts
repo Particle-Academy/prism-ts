@@ -65,7 +65,7 @@ import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
-import { configuredString, inheritsEnvironmentCredentials, scopedNullableString, scopedString } from '../../internal/provider-config.js';
+import { configuredString, configuredUrl, inheritsEnvironmentCredentials, scopedNullableString, scopedString } from '../../internal/provider-config.js';
 
 export interface OpenAIConfig {
   apiKey?: string | null;
@@ -109,7 +109,7 @@ export class OpenAI extends Provider {
   constructor(config: OpenAIConfig = {}) {
     super();
 
-    this.url = configuredString(config.url, 'OPENAI_URL', DEFAULT_URL);
+    this.url = configuredUrl(config.url, 'OPENAI_URL', DEFAULT_URL);
     // Environment credentials belong to the environment's endpoint only.
     const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'OPENAI_URL', DEFAULT_URL);
     this.apiKey = scopedString(config.apiKey, 'OPENAI_API_KEY', inherit, '', '');

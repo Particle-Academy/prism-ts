@@ -1,4 +1,5 @@
 import { PrismError } from '../errors.js';
+import { assertCleanUrl } from '../internal/provider-config.js';
 import type { Provider } from './provider.js';
 import { Anthropic } from './anthropic/anthropic.js';
 import type { AnthropicConfig } from './anthropic/anthropic.js';
@@ -41,7 +42,7 @@ export interface RegisterProviderOptions {
 export function registerProvider(key: string, factory: ProviderFactory, options: RegisterProviderOptions = {}): void {
   if (!isValidProviderName(key)) {
     throw new Error(
-      'That is not a valid provider name: a provider name must be non-empty and contain no whitespace, control, format or invisible characters.',
+      'That is not a valid provider name: a provider name must start with an ASCII letter or digit, contain only ASCII letters, digits, ".", "_" and "-", and be at most 64 characters long.',
     );
   }
   if (options.replace !== true && isRegistered(key)) {
@@ -51,20 +52,16 @@ export function registerProvider(key: string, factory: ProviderFactory, options:
 }
 
 /**
- * A provider key may not be empty, and may not contain a control (Cc), format
- * (Cf) or lone-surrogate (Cs) codepoint, nor any codepoint of the G-36 set:
- * U+0000, U+0009..U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000..U+200D,
- * U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF. That set is spelled by
- * codepoint, identically to the human-plus confirmation guard and to the
- * reference and prism-py, because each language's own idea of whitespace
- * (`.trim()`, `\s`) disagrees with the others'. ` openai`, `openai ` and
- * `openai` + U+200B are distinct keys that read as the built-in in a config
- * file or a log, so they are refused rather than trimmed into another name.
+ * A provider key: ASCII, starting with a letter or digit, at most 64
+ * characters. A positive allow-list rather than a list of forbidden
+ * characters, so it needs no Unicode tables and reads the same as the
+ * reference's `extend()` and prism-py's `register_provider()`. A homoglyph
+ * (Cyrillic U+043E for the first `o`), a full-width `openai`, a padded one or
+ * one carrying an invisible codepoint is a second key that reads as the
+ * built-in in a config file or a log, so it is refused, never trimmed or
+ * folded.
  */
-const VALID_PROVIDER_NAME =
-  // Matching control characters is the point: they are what this refuses.
-  // eslint-disable-next-line no-control-regex
-  /^[^\p{Cc}\p{Cf}\p{Cs}\u0000\u0009-\u000D\u0020\u0085\u00A0\u1680\u2000-\u200D\u2028\u2029\u202F\u205F\u3000\uFEFF]+$/u;
+const VALID_PROVIDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function isValidProviderName(key: string): boolean {
   return VALID_PROVIDER_NAME.test(key);
@@ -98,6 +95,9 @@ export function resolveProvider(key: string, config: Record<string, unknown> = {
       `this build (registered: ${registeredProviders().join(', ')})`,
     );
   }
+
+  // Before the factory runs, so a custom provider is held to the same rule.
+  assertCleanUrl(config.url);
 
   return factory(config);
 }
