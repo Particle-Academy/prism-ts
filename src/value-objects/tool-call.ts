@@ -59,23 +59,62 @@ export class ToolCall {
       return {};
     }
 
-    let decoded: unknown;
+    const decoded = this.#decode(this.arguments);
 
+    return isJsonObject(decoded) ? decoded : {};
+  }
+
+  /**
+   * Whether the arguments are unusable: not JSON, or not a map of named values.
+   * A JSON `null`, an empty list and an empty string all mean none were given.
+   * Integer-like keys count as unusable because the reference binds them to a
+   * handler by position, and all three languages classify a call the same way.
+   */
+  hasMalformedArguments(): boolean {
+    if (this.arguments === '' || this.arguments === '0') {
+      return false;
+    }
+
+    let decoded: unknown = this.arguments;
+
+    if (typeof this.arguments === 'string') {
+      try {
+        decoded = this.#decode(this.arguments);
+      } catch {
+        return true;
+      }
+    }
+
+    if (decoded === null || (Array.isArray(decoded) && decoded.length === 0)) {
+      return false;
+    }
+
+    return !isJsonObject(decoded) || Object.keys(decoded).some(isIntegerKey);
+  }
+
+  /** This call with unusable arguments replaced by none; a valid call is unchanged. */
+  withoutMalformedArguments(): ToolCall {
+    if (!this.hasMalformedArguments()) {
+      return this;
+    }
+
+    return new ToolCall(this.id, this.name, {}, this.resultId, this.reasoningId, this.reasoningSummary);
+  }
+
+  #decode(text: string): unknown {
     try {
-      decoded = JSON.parse(this.arguments);
+      return JSON.parse(text);
     } catch (error) {
       // Some providers emit raw control characters inside string values, which
       // RFC 8259 requires to be escaped. Escape them in place — rather than
       // stripping them, which would corrupt intentional newlines and tabs — and
       // decode again.
       try {
-        decoded = JSON.parse(escapeControlCharactersInStrings(this.arguments));
+        return JSON.parse(escapeControlCharactersInStrings(text));
       } catch (retryError) {
         throw PrismError.malformedToolCallArguments(this.name, retryError ?? error);
       }
     }
-
-    return isJsonObject(decoded) ? decoded : {};
   }
 
   toObject(): JsonObject {
@@ -101,6 +140,17 @@ export class ToolCall {
       Array.isArray(object.reasoning_summary) ? object.reasoning_summary : null,
     );
   }
+}
+
+/** A key PHP would store as an integer: canonical decimal, within 64 bits. */
+function isIntegerKey(key: string): boolean {
+  if (!/^(0|-?[1-9][0-9]*)$/.test(key)) {
+    return false;
+  }
+
+  const value = BigInt(key);
+
+  return value >= -9223372036854775808n && value <= 9223372036854775807n;
 }
 
 /**

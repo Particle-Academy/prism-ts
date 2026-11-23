@@ -2,6 +2,7 @@ import type { JsonObject, JsonValue } from '../../../json.js';
 import { PrismError } from '../../../errors.js';
 import type { AssistantMessage, Message, SystemMessage, UserMessage } from '../../../value-objects/messages/index.js';
 import { mapDocument, mapImage } from './media-map.js';
+import { replayableMessages } from '../../../value-objects/messages/replayable-messages.js';
 
 /**
  * Map messages onto Mistral's chat-completions shape.
@@ -23,7 +24,7 @@ export function mapMessages(
   messages: readonly Message[],
   systemPrompts: readonly SystemMessage[],
 ): JsonObject[] {
-  return [...systemPrompts, ...messages].flatMap(mapMessage);
+  return [...systemPrompts, ...replayableMessages(messages)].flatMap(mapMessage);
 }
 
 function mapMessage(message: Message): JsonObject[] {
