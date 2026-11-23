@@ -98,19 +98,27 @@ export class ToolCall {
   }
 
   #decode(text: string): unknown {
+    let decoded: unknown;
+
     try {
-      return JSON.parse(text);
+      decoded = JSON.parse(text);
     } catch (error) {
       // Some providers emit raw control characters inside string values, which
       // RFC 8259 requires to be escaped. Escape them in place — rather than
       // stripping them, which would corrupt intentional newlines and tabs — and
       // decode again.
       try {
-        return JSON.parse(escapeControlCharactersInStrings(text));
+        decoded = JSON.parse(escapeControlCharactersInStrings(text));
       } catch (retryError) {
         throw PrismError.malformedToolCallArguments(this.name, retryError ?? error);
       }
     }
+
+    if (!decodesInEveryLanguage(decoded)) {
+      throw PrismError.malformedToolCallArguments(this.name);
+    }
+
+    return decoded;
   }
 
   toObject(): JsonObject {
@@ -136,6 +144,41 @@ export class ToolCall {
       Array.isArray(object.reasoning_summary) ? object.reasoning_summary : null,
     );
   }
+}
+
+const MAX_JSON_DEPTH = 511;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/**
+ * The reference's decoder refuses a lone surrogate and nesting past 511 levels.
+ * Walked with a stack, so deep input cannot overflow the call stack here.
+ */
+function decodesInEveryLanguage(root: unknown): boolean {
+  const pending: [unknown, number][] = [[root, 1]];
+
+  while (pending.length > 0) {
+    const [value, depth] = pending.pop() as [unknown, number];
+
+    if (typeof value === 'string') {
+      if (LONE_SURROGATE.test(value)) return false;
+      continue;
+    }
+
+    if (typeof value !== 'object' || value === null) continue;
+    if (depth > MAX_JSON_DEPTH) return false;
+
+    if (Array.isArray(value)) {
+      for (const item of value) pending.push([item, depth + 1]);
+      continue;
+    }
+
+    for (const [key, item] of Object.entries(value)) {
+      if (LONE_SURROGATE.test(key)) return false;
+      pending.push([item, depth + 1]);
+    }
+  }
+
+  return true;
 }
 
 /** A key PHP would store as an integer: canonical decimal, within 64 bits. */

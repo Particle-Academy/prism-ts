@@ -77,18 +77,23 @@ function mapAssistantMessage(message: AssistantMessage): JsonObject {
   const body: JsonObject = { role: 'assistant', content: message.content };
 
   if (message.toolCalls.length > 0) {
-    body.tool_calls = message.toolCalls.map((call) => ({
-      id: call.id,
-      type: 'function',
-      function: {
-        name: call.name,
-        // A JSON STRING, not an object — the chat-completions shape. An object
-        // is accepted by some gateways and rejected by Mistral, which is the
-        // worst kind of difference to carry. Already-string arguments are
-        // passed through rather than re-encoded into a quoted string.
-        arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments),
-      },
-    }));
+    body.tool_calls = message.toolCalls.map((call) => {
+      // Refuses unusable arguments here, as the other providers' maps do.
+      const parsed = call.parsedArguments();
+
+      return {
+        id: call.id,
+        type: 'function',
+        function: {
+          name: call.name,
+          // A JSON STRING, not an object — the chat-completions shape. An object
+          // is accepted by some gateways and rejected by Mistral, which is the
+          // worst kind of difference to carry. Already-string arguments are
+          // passed through rather than re-encoded into a quoted string.
+          arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(parsed),
+        },
+      };
+    });
   }
 
   return body;

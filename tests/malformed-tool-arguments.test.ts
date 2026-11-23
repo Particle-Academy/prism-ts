@@ -211,3 +211,36 @@ describe('parsedArguments on arguments that are not named values', () => {
     expect(typeof sent === 'string' ? JSON.parse(sent) : sent).toEqual({});
   });
 });
+
+describe('arguments the three languages must read alike', () => {
+  const nested = (depth: number): string => `${'{"a":'.repeat(depth - 1)}{}${'}'.repeat(depth - 1)}`;
+
+  it.each([
+    ['NaN inside a map', '{"a":NaN}'],
+    ['Infinity inside a map', '{"a":Infinity}'],
+    ['a lone high surrogate', '{"a":"\\ud800"}'],
+    ['a lone low surrogate', '{"a":"\\udc00"}'],
+    ['a lone surrogate in a key', '{"\\ud800":1}'],
+    ['512 levels of nesting', nested(512)],
+  ])('refuses %s', (_name, args) => {
+    expect(new ToolCall('c', 't', args).hasMalformedArguments()).toBe(true);
+  });
+
+  it.each([
+    ['a surrogate pair', '{"a":"\\ud83d\\ude00"}'],
+    ['511 levels of nesting', nested(511)],
+  ])('accepts %s', (_name, args) => {
+    expect(new ToolCall('c', 't', args).hasMalformedArguments()).toBe(false);
+  });
+
+  it('mistral: refuses an unanswered unusable call at mapping', async () => {
+    const { transport, calls } = recording('mistral');
+    const failure = await failureOf(() => Prism.text().using('mistral', 'm', { transport }).withMessages([
+      new UserMessage('Weather?'),
+      new AssistantMessage('', [new ToolCall('call_1', 'weather', '5', 'call_1')]),
+    ]).asText());
+
+    expect(failure).toContain('not a JSON object');
+    expect(calls).toHaveLength(0);
+  });
+});
