@@ -150,4 +150,57 @@ describe('provider registration', () => {
     expect(resolveProvider('credential-scope-twice')).toBe(replacement);
     expect(registeredProviders()).toContain('credential-scope-twice');
   });
+
+  // Case-insensitive (ASCII), as the reference's strtolower() and prism-py are.
+  it.each(['OpenAI', 'ANTHROPIC', 'Mistral'])('refuses %s, a case variant of a built-in', (name) => {
+    expect(() => registerProvider(name, stub)).toThrow('already registered');
+    expect(registeredProviders()).not.toContain(name);
+  });
+
+  it('refuses a case variant of a custom provider registered earlier', () => {
+    registerProvider('credential-scope-case', stub);
+    expect(() => registerProvider('Credential-Scope-Case', stub)).toThrow('already registered');
+    expect(registeredProviders()).not.toContain('Credential-Scope-Case');
+  });
+
+  /*
+   * A provider name a human cannot read correctly is refused, not trimmed. The
+   * rule is spelled identically in the reference and prism-py: non-empty, and no
+   * whitespace, control (Cc) or format (Cf) character, nor any codepoint of the
+   * G-36 set the human-plus confirmation guard normalises.
+   */
+  it.each([
+    ['empty', ''],
+    ['leading space', ' openai'],
+    ['trailing space', 'openai '],
+    ['interior space', 'open ai'],
+    ['tab', 'openai\t'],
+    ['newline', 'openai\n'],
+    ['NUL', 'openai\u0000'],
+    ['C0 control', 'openai\u001F'],
+    ['NEL', 'openai\u0085'],
+    ['no-break space', 'openai\u00A0'],
+    ['ideographic space', 'open\u3000ai'],
+    ['zero-width space', 'openai\u200B'],
+    ['zero-width joiner', 'open\u200Dai'],
+    ['BOM prefix', '\uFEFFopenai'],
+    ['right-to-left override (Cf)', 'openai\u202E'],
+    ['word joiner (Cf, outside G-36)', 'openai\u2060'],
+    ['soft hyphen (Cf)', 'open\u00ADai'],
+    ['lone surrogate', 'openai\uD800'],
+  ])('refuses a provider name with %s', (_label, name) => {
+    expect(() => registerProvider(name, stub)).toThrow('not a valid provider name');
+    // Refused even when replacement is explicit: replace does not license a name.
+    expect(() => registerProvider(name, stub, { replace: true })).toThrow('not a valid provider name');
+    expect(registeredProviders()).not.toContain(name);
+  });
+
+  it.each(['credential-scope-plain', 'my_provider.v2', 'acme:edge', 'caf\u00E9'])(
+    'still accepts the ordinary custom provider name %s',
+    (name) => {
+      const marker = { marker: name } as unknown as Provider;
+      registerProvider(name, () => marker);
+      expect(resolveProvider(name)).toBe(marker);
+    },
+  );
 });
