@@ -19,7 +19,7 @@ import { buildRequestBody, buildStructuredBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
-import { anthropicBeta, configuredString, thinkingBudgetDefault } from '../../internal/provider-config.js';
+import { anthropicBeta, configuredString, configuredUrl, inheritsEnvironmentCredentials, scopedString, thinkingBudgetDefault } from '../../internal/provider-config.js';
 
 export interface AnthropicConfig {
   apiKey?: string;
@@ -73,8 +73,10 @@ export class Anthropic extends Provider {
   constructor(config: AnthropicConfig = {}) {
     super();
 
-    this.apiKey = configuredString(config.apiKey, 'ANTHROPIC_API_KEY', '');
-    this.url = configuredString(config.url, 'ANTHROPIC_URL', DEFAULT_URL, DEFAULT_URL);
+    this.url = configuredUrl(config.url, 'ANTHROPIC_URL', DEFAULT_URL, DEFAULT_URL);
+    // Environment credentials belong to the environment's endpoint only.
+    const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'ANTHROPIC_URL', DEFAULT_URL, DEFAULT_URL);
+    this.apiKey = scopedString(config.apiKey, 'ANTHROPIC_API_KEY', inherit, '');
     this.apiVersion = configuredString(config.apiVersion, 'ANTHROPIC_API_VERSION', DEFAULT_API_VERSION);
     this.betaFeatures = anthropicBeta(config.betaFeatures);
     this.defaultThinkingBudget = thinkingBudgetDefault(config.defaultThinkingBudget);

@@ -142,6 +142,32 @@ literal. A non-string environment scalar is refused for a string-only field.
 OpenAI supports only the Responses format; selecting another format still
 raises `unsupported_provider_action` before HTTP.
 
+Credentials are scoped to their configured endpoint. Environment credentials
+(`*_API_KEY`, and OpenAI's `OPENAI_ORGANIZATION` / `OPENAI_PROJECT`) are used
+only when the effective URL is the environment's URL (`OPENAI_URL`,
+`ANTHROPIC_URL`, `MISTRAL_URL`) or, when that is unset, the provider default. A
+per-call `url` elsewhere must supply its own key:
+
+```ts
+Prism.text().using('openai', 'gpt-4o', { url: 'https://gateway.example/v1', apiKey: gatewayKey });
+```
+
+A trailing slash, or a difference in the case of the scheme or host, is the same
+endpoint. A different scheme, host, port, path or query is not.
+
+`registerProvider()` refuses a key that is already registered — a built-in such
+as `openai`, or one registered earlier — unless `{ replace: true }` is passed.
+Keys are compared case-insensitively, so `OpenAI` collides with `openai`. A key
+must start with an ASCII letter or digit, contain only ASCII letters, digits,
+`.`, `_` and `-`, and be at most 64 characters long; any other key throws, even
+with `{ replace: true }`, so a look-alike such as `openai` spelled with a
+Cyrillic `о`, a full-width `ｏｐｅｎａｉ` or a padded `openai ` cannot be
+registered. The key is not trimmed.
+
+A `url`, per call or from `OPENAI_URL` / `ANTHROPIC_URL` / `MISTRAL_URL`, that
+contains whitespace or a control character anywhere, including at either end,
+is refused with a `TypeError` before any request is made. It is not trimmed.
+
 Anthropic reads `ANTHROPIC_API_KEY`, `ANTHROPIC_URL`, `ANTHROPIC_API_VERSION`
 and canonical `ANTHROPIC_BETA`. The old `ANTHROPIC_BETA_FEATURES` is used only
 when neither explicit `betaFeatures` nor canonical `ANTHROPIC_BETA` is present.

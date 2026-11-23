@@ -65,7 +65,7 @@ import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
-import { configuredString, nullableString } from '../../internal/provider-config.js';
+import { configuredString, configuredUrl, inheritsEnvironmentCredentials, scopedNullableString, scopedString } from '../../internal/provider-config.js';
 
 export interface OpenAIConfig {
   apiKey?: string | null;
@@ -109,10 +109,12 @@ export class OpenAI extends Provider {
   constructor(config: OpenAIConfig = {}) {
     super();
 
-    this.apiKey = configuredString(config.apiKey, 'OPENAI_API_KEY', '', '');
-    this.url = configuredString(config.url, 'OPENAI_URL', DEFAULT_URL);
-    this.organization = nullableString(config.organization, 'OPENAI_ORGANIZATION');
-    this.project = nullableString(config.project, 'OPENAI_PROJECT');
+    this.url = configuredUrl(config.url, 'OPENAI_URL', DEFAULT_URL);
+    // Environment credentials belong to the environment's endpoint only.
+    const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'OPENAI_URL', DEFAULT_URL);
+    this.apiKey = scopedString(config.apiKey, 'OPENAI_API_KEY', inherit, '', '');
+    this.organization = scopedNullableString(config.organization, 'OPENAI_ORGANIZATION', inherit);
+    this.project = scopedNullableString(config.project, 'OPENAI_PROJECT', inherit);
     this.apiFormat = configuredString(config.apiFormat, 'OPENAI_API_FORMAT', 'responses', 'responses');
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;

@@ -24,6 +24,113 @@ export function configuredString(value: unknown, name: string, fallback: string,
   return resolved;
 }
 
+/**
+ * Codepoints a provider url may not contain anywhere, spelled by codepoint and
+ * identically in the reference and prism-py: every Cc control (U+0000..U+001F,
+ * U+007F..U+009F), every Unicode White_Space codepoint, and the G-36
+ * zero-widths U+200B..U+200D and U+FEFF. Each language's own idea of
+ * whitespace (`.trim()`, `\s`) disagrees with the others', so none is used.
+ */
+const URL_FORBIDDEN =
+  // Matching control characters is the point: they are what this refuses.
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001F\u0020\u007F-\u009F\u00A0\u1680\u2000-\u200D\u2028\u2029\u202F\u205F\u3000\uFEFF]/;
+
+/**
+ * Refuse a url that carries whitespace or a control character anywhere,
+ * including at either end. It is never trimmed: where the key goes must not
+ * depend on how tolerant an HTTP stack is of a padded url. The message names
+ * neither the url nor any credential. Anything that is not a string is left
+ * to the caller's own type check.
+ *
+ * @throws TypeError for a url containing a forbidden codepoint.
+ */
+export function assertCleanUrl(url: unknown): void {
+  if (typeof url === 'string' && URL_FORBIDDEN.test(url)) {
+    throw new TypeError('That is not a valid provider url: a provider url must not contain whitespace or control characters.');
+  }
+}
+
+/**
+ * The provider url, configured or per call, with both checked by
+ * `assertCleanUrl()` before anything is built. A padded environment url is a
+ * misconfiguration even when this call overrides it.
+ */
+export function configuredUrl(value: unknown, name: string, fallback: string, nullFallback?: string): string {
+  assertCleanUrl(readEnvironment(name));
+  assertCleanUrl(value);
+  return configuredString(value, name, fallback, nullFallback);
+}
+
+/** Linear, unlike /\/+$/ which is quadratic on a long run of slashes mid-string. */
+function withoutTrailingSlash(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end -= 1;
+  return path.slice(0, end);
+}
+
+/** Canonical endpoint identity: case-insensitive scheme/host, default port, no trailing slash. */
+function endpointIdentity(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.hostname === '') return null;
+
+  return [
+    parsed.protocol,
+    parsed.username,
+    parsed.password,
+    parsed.hostname,
+    parsed.port,
+    withoutTrailingSlash(parsed.pathname),
+    parsed.search,
+  ].join('|');
+}
+
+/**
+ * True when two URLs name the same endpoint. A trailing slash or a difference
+ * in the case of the scheme or host does not make a different endpoint; a
+ * different scheme, host, port, path or query does. Unparseable is never same.
+ */
+export function sameEndpoint(a: string, b: string): boolean {
+  const left = endpointIdentity(a);
+  return left !== null && left === endpointIdentity(b);
+}
+
+/**
+ * Credentials from the environment are scoped to the endpoint the environment
+ * configures (or the provider default). `inherit` is false when the caller
+ * pointed the provider at a different URL; the environment value is then not
+ * read, and the caller must pass the credential explicitly.
+ */
+export function scopedString(value: unknown, name: string, inherit: boolean, fallback: string, nullFallback?: string): string {
+  if (value === undefined && !inherit) return fallback;
+  return configuredString(value, name, fallback, nullFallback);
+}
+
+export function scopedNullableString(value: unknown, name: string, inherit: boolean): string | null {
+  if (value === undefined && !inherit) return null;
+  return nullableString(value, name);
+}
+
+/**
+ * Whether environment credentials apply to `url`: only when it is the URL the
+ * environment configures, or the provider default when none is configured.
+ */
+export function inheritsEnvironmentCredentials(url: string, urlName: string, fallback: string, nullFallback?: string): boolean {
+  let configuredUrl: string;
+  try {
+    configuredUrl = configuredString(undefined, urlName, fallback, nullFallback);
+  } catch {
+    // An unusable environment URL configures no endpoint to scope a key to.
+    return false;
+  }
+  return url === configuredUrl || sameEndpoint(url, configuredUrl);
+}
+
 export function nullableString(value: unknown, name: string): string | null {
   const resolved = value === undefined ? environmentValue(name, null) : value;
   if (resolved !== null && typeof resolved !== 'string') throw new TypeError(`Invalid nullable string configuration for ${name}.`);

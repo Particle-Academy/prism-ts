@@ -42,7 +42,7 @@ export { Provider } from './providers/provider.js';
 export { Anthropic } from './providers/anthropic/anthropic.js';
 export type { AnthropicConfig } from './providers/anthropic/anthropic.js';
 export { registerProvider, registeredProviders, resolveProvider } from './providers/registry.js';
-export type { ProviderFactory } from './providers/registry.js';
+export type { ProviderFactory, RegisterProviderOptions } from './providers/registry.js';
 export { OpenAI } from './providers/openai/openai.js';
 export type { OpenAIConfig } from './providers/openai/openai.js';
 
