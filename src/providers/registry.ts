@@ -15,8 +15,26 @@ const providers = new Map<string, ProviderFactory>([
   ['openai', (config) => new OpenAI(config as OpenAIConfig)],
 ]);
 
-/** Teach `using()` about a provider this package does not ship. */
-export function registerProvider(key: string, factory: ProviderFactory): void {
+export interface RegisterProviderOptions {
+  /** Replace a provider already registered under `key`, including a built-in. */
+  replace?: boolean;
+}
+
+/**
+ * Teach `using()` about a provider this package does not ship.
+ *
+ * A key that is already registered — a built-in such as `openai`, or one
+ * registered earlier — is refused unless `{ replace: true }` is passed.
+ * Replacing a provider changes what every caller of that key gets,
+ * process-wide, so it has to be asked for.
+ *
+ * @throws Error when the key is taken and `replace` is not set (a programming
+ *   error, like PHP's InvalidArgumentException; it carries no Prism error code).
+ */
+export function registerProvider(key: string, factory: ProviderFactory, options: RegisterProviderOptions = {}): void {
+  if (providers.has(key) && options.replace !== true) {
+    throw new Error(`The provider "${key}" is already registered. Pass { replace: true } to replace it.`);
+  }
   providers.set(key, factory);
 }
 

@@ -142,6 +142,22 @@ literal. A non-string environment scalar is refused for a string-only field.
 OpenAI supports only the Responses format; selecting another format still
 raises `unsupported_provider_action` before HTTP.
 
+Credentials are scoped to their configured endpoint. Environment credentials
+(`*_API_KEY`, and OpenAI's `OPENAI_ORGANIZATION` / `OPENAI_PROJECT`) are used
+only when the effective URL is the environment's URL (`OPENAI_URL`,
+`ANTHROPIC_URL`, `MISTRAL_URL`) or, when that is unset, the provider default. A
+per-call `url` elsewhere must supply its own key:
+
+```ts
+Prism.text().using('openai', 'gpt-4o', { url: 'https://gateway.example/v1', apiKey: gatewayKey });
+```
+
+A trailing slash, or a difference in the case of the scheme or host, is the same
+endpoint. A different scheme, host, port, path or query is not.
+
+`registerProvider()` refuses a key that is already registered — a built-in such
+as `openai`, or one registered earlier — unless `{ replace: true }` is passed.
+
 Anthropic reads `ANTHROPIC_API_KEY`, `ANTHROPIC_URL`, `ANTHROPIC_API_VERSION`
 and canonical `ANTHROPIC_BETA`. The old `ANTHROPIC_BETA_FEATURES` is used only
 when neither explicit `betaFeatures` nor canonical `ANTHROPIC_BETA` is present.

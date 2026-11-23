@@ -24,6 +24,75 @@ export function configuredString(value: unknown, name: string, fallback: string,
   return resolved;
 }
 
+/** Linear, unlike /\/+$/ which is quadratic on a long run of slashes mid-string. */
+function withoutTrailingSlash(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end -= 1;
+  return path.slice(0, end);
+}
+
+/** Canonical endpoint identity: case-insensitive scheme/host, default port, no trailing slash. */
+function endpointIdentity(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  if (parsed.hostname === '') return null;
+
+  return [
+    parsed.protocol,
+    parsed.username,
+    parsed.password,
+    parsed.hostname,
+    parsed.port,
+    withoutTrailingSlash(parsed.pathname),
+    parsed.search,
+  ].join('|');
+}
+
+/**
+ * True when two URLs name the same endpoint. A trailing slash or a difference
+ * in the case of the scheme or host does not make a different endpoint; a
+ * different scheme, host, port, path or query does. Unparseable is never same.
+ */
+export function sameEndpoint(a: string, b: string): boolean {
+  const left = endpointIdentity(a);
+  return left !== null && left === endpointIdentity(b);
+}
+
+/**
+ * Credentials from the environment are scoped to the endpoint the environment
+ * configures (or the provider default). `inherit` is false when the caller
+ * pointed the provider at a different URL; the environment value is then not
+ * read, and the caller must pass the credential explicitly.
+ */
+export function scopedString(value: unknown, name: string, inherit: boolean, fallback: string, nullFallback?: string): string {
+  if (value === undefined && !inherit) return fallback;
+  return configuredString(value, name, fallback, nullFallback);
+}
+
+export function scopedNullableString(value: unknown, name: string, inherit: boolean): string | null {
+  if (value === undefined && !inherit) return null;
+  return nullableString(value, name);
+}
+
+/**
+ * Whether environment credentials apply to `url`: only when it is the URL the
+ * environment configures, or the provider default when none is configured.
+ */
+export function inheritsEnvironmentCredentials(url: string, urlName: string, fallback: string, nullFallback?: string): boolean {
+  let configuredUrl: string;
+  try {
+    configuredUrl = configuredString(undefined, urlName, fallback, nullFallback);
+  } catch {
+    // An unusable environment URL configures no endpoint to scope a key to.
+    return false;
+  }
+  return url === configuredUrl || sameEndpoint(url, configuredUrl);
+}
+
 export function nullableString(value: unknown, name: string): string | null {
   const resolved = value === undefined ? environmentValue(name, null) : value;
   if (resolved !== null && typeof resolved !== 'string') throw new TypeError(`Invalid nullable string configuration for ${name}.`);

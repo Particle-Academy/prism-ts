@@ -27,7 +27,7 @@ import { parseRateLimits } from './rate-limits.js';
 import { MistralStreamMapper } from './stream-events.js';
 import { buildTranscriptionForm, parseTranscriptionResponse } from '../openai/audio.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
-import { configuredString } from '../../internal/provider-config.js';
+import { configuredString, inheritsEnvironmentCredentials, scopedString } from '../../internal/provider-config.js';
 
 export interface MistralConfig {
   apiKey?: string;
@@ -72,8 +72,10 @@ export class Mistral extends Provider {
   constructor(config: MistralConfig = {}) {
     super();
 
-    this.apiKey = configuredString(config.apiKey, 'MISTRAL_API_KEY', '');
     this.url = withoutTrailingSlashes(configuredString(config.url, 'MISTRAL_URL', DEFAULT_URL));
+    // Environment credentials belong to the environment's endpoint only.
+    const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'MISTRAL_URL', DEFAULT_URL);
+    this.apiKey = scopedString(config.apiKey, 'MISTRAL_API_KEY', inherit, '');
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
     this.#binaryTransport = config.binaryTransport ?? fetchBinaryTransport;
