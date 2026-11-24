@@ -53,8 +53,10 @@ That is the shape of the remaining drift: one axis, not two.
   `batch`, `fim`. A user message carries images and documents, and each provider
   spells them its own way.
 - **Providers — `anthropic`, `mistral`, `openai`.** The OpenAI provider speaks
-  the **Responses API**; Mistral brings the chat-completions shape, which is a
-  different wire format rather than a variant of it.
+  the **Responses API** by default and **chat completions** with
+  `apiFormat: 'chat_completions'`; Mistral brings its own chat-completions
+  mapping. Any OpenAI-compatible server can be added by name with
+  `configureProviders()`.
 
 Not included, and not stubbed: **the tool-execution loop** — a response that
 finishes on tool calls is refused with `tool_loop_not_supported` rather than
@@ -139,8 +141,9 @@ Environment strings follow Laravel's reserved spellings: case-insensitive
 `null`, `true`, `false`, `empty` and their parenthesized forms become scalars;
 matching surrounding quotes are removed. Direct constructor strings remain
 literal. A non-string environment scalar is refused for a string-only field.
-OpenAI supports only the Responses format; selecting another format still
-raises `unsupported_provider_action` before HTTP.
+OpenAI's `apiFormat` is `'responses'` (the default) or `'chat_completions'`,
+which sends text, structured and stream calls to `<url>/chat/completions`.
+Any other format raises `unsupported_provider_action` before HTTP.
 
 Credentials are scoped to their configured endpoint. Environment credentials
 (`*_API_KEY`, and OpenAI's `OPENAI_ORGANIZATION` / `OPENAI_PROJECT`) are used
@@ -167,6 +170,54 @@ registered. The key is not trimmed.
 A `url`, per call or from `OPENAI_URL` / `ANTHROPIC_URL` / `MISTRAL_URL`, that
 contains whitespace or a control character anywhere, including at either end,
 is refused with a `TypeError` before any request is made. It is not trimmed.
+
+### OpenAI-compatible providers
+
+`configureProviders()` registers named OpenAI-compatible servers (vLLM, LM
+Studio, a gateway) and `using(name, model)` reaches them:
+
+```ts
+import { configureProviders, Prism } from '@particle-academy/prism';
+
+configureProviders({
+  'my-vllm': { driver: 'openai-compatible', url: 'http://10.0.0.5:8000/v1', apiKey: vllmKey },
+  'lm-studio': { driver: 'openai-compatible', url: 'http://localhost:1234/v1' },
+});
+
+await Prism.text().using('my-vllm', 'qwen3').withPrompt('Hi').asText();
+```
+
+An entry takes `driver` (only `'openai-compatible'`), `url`, and optionally
+`apiKey`, `apiFormat` (`'chat_completions'`, the default, or `'responses'`),
+`organization` and `project`.
+
+- **Only the entry's own credentials are sent.** Nothing is read from the
+  environment: not `OPENAI_API_KEY`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`,
+  `OPENAI_URL` or `OPENAI_API_FORMAT`. An entry with no key sends no
+  `Authorization` header at all.
+- **A per-call `url` that names a different endpoint drops the entry's key,
+  organization and project**; pass `apiKey` with it if that endpoint needs one.
+- **`url` must be an absolute `http://` or `https://` url with a host.**
+  Private, loopback and link-local addresses are allowed, because the url is
+  your configuration, not user input. The same check applies to a per-call url.
+- **Names follow `registerProvider()`'s rules**: the same ASCII allow-list,
+  never trimmed, and refused when they match a built-in (`openai`, `OpenAI`,
+  `ANTHROPIC`) or an earlier registration case-insensitively, unless
+  `{ replace: true }` is passed. A mixed-case name that collides with nothing,
+  such as `My-VLLM`, is used exactly as written.
+- **Every entry is checked before any is registered**, so one bad entry leaves
+  the registry unchanged.
+
+Refusals are thrown as `Error` / `TypeError` with messages containing
+`not a valid provider name`, `already registered`, `not a supported provider
+driver`, `not a valid provider url` or `not a valid api format`. No message
+contains the url, a key or a header value.
+
+The chat-completions format follows the reference's request bodies exactly. A
+reply that finishes on tool calls is refused with `tool_loop_not_supported`
+(the tool never runs), a model refusal is a `provider_response_error`, and a
+user message carrying a document, audio or video is refused with
+`unsupported_media`, where the reference drops the part without a word.
 
 Anthropic reads `ANTHROPIC_API_KEY`, `ANTHROPIC_URL`, `ANTHROPIC_API_VERSION`
 and canonical `ANTHROPIC_BETA`. The old `ANTHROPIC_BETA_FEATURES` is used only

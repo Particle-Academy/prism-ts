@@ -116,12 +116,13 @@ describe('OpenAI provider', () => {
     });
   });
 
-  it('refuses the chat-completions api format, which is not ported', async () => {
+  // chat_completions is ported (G-321 D); see chat-completions.test.ts.
+  it('refuses an api format it does not implement', async () => {
     const { transport } = recordingTransport();
 
     await expect(
       Prism.text()
-        .using('openai', 'gpt-4o', { apiKey: 'sk-test', apiFormat: 'chat_completions', transport })
+        .using('openai', 'gpt-4o', { apiKey: 'sk-test', apiFormat: 'completions', transport })
         .withPrompt('Hi')
         .asText(),
     ).rejects.toMatchObject({ code: 'unsupported_provider_action' });

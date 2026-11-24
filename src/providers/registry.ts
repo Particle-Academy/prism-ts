@@ -40,6 +40,17 @@ export interface RegisterProviderOptions {
  *   InvalidArgumentException; it carries no Prism error code).
  */
 export function registerProvider(key: string, factory: ProviderFactory, options: RegisterProviderOptions = {}): void {
+  assertRegistrable(key, options);
+  providers.set(key, factory);
+}
+
+/**
+ * The name and collision rules of `registerProvider()`, without registering.
+ * `configureProviders()` checks every entry with this before it registers any.
+ *
+ * @internal
+ */
+export function assertRegistrable(key: string, options: RegisterProviderOptions = {}): void {
   if (!isValidProviderName(key)) {
     throw new Error(
       'That is not a valid provider name: a provider name must start with an ASCII letter or digit, contain only ASCII letters, digits, ".", "_" and "-", and be at most 64 characters long.',
@@ -48,7 +59,6 @@ export function registerProvider(key: string, factory: ProviderFactory, options:
   if (options.replace !== true && isRegistered(key)) {
     throw new Error(`The provider "${key}" is already registered. Pass { replace: true } to replace it.`);
   }
-  providers.set(key, factory);
 }
 
 /**
@@ -67,7 +77,8 @@ function isValidProviderName(key: string): boolean {
   return VALID_PROVIDER_NAME.test(key);
 }
 
-function asciiLower(value: string): string {
+/** @internal */
+export function asciiLower(value: string): string {
   return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 

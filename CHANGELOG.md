@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `configureProviders()` registers named OpenAI-compatible providers (`driver: 'openai-compatible'`). Each sends only its own `apiKey`, `organization` and `project` and reads nothing from the environment; an entry with no key sends no `Authorization` header. A per-call `url` for a different endpoint drops the entry's credentials. The url must be an absolute http or https url (private addresses allowed). Names follow `registerProvider()`'s allow-list and collision rules, and every entry is checked before any is registered (G-321 A).
+- The OpenAI provider supports `apiFormat: 'chat_completions'` for text, structured and stream, posting the reference's request bodies to `<url>/chat/completions`. Tool-call replies are refused with `tool_loop_not_supported` without running the tool, unusable tool arguments follow the existing rules, and a document, audio or video part is refused with `unsupported_media` (G-321 D).
+- `OpenAIConfig.ignoreEnvironment` builds an OpenAI provider from the passed values only.
+- An unknown OpenAI `apiFormat` is now refused on `stream` as well as on `text` and `structured`; streaming used to ignore the format.
+
 ## 0.11.0 — 2026-11-23
 
 BREAKING CHANGE: `parsedArguments()` throws `malformed_tool_call_arguments` for a number, string, boolean, non-empty list or integer-keyed map. It used to return an empty object for the first four. An empty string, the text `0`, `null`, `[]` and `{}` still mean no arguments. Code that reads the arguments before running a tool should catch the error and return it to the model as a tool error, or check `hasMalformedArguments()` first.
