@@ -94,7 +94,8 @@ export interface OpenAIConfig {
   binaryTransport?: HttpBinaryTransport;
 }
 
-const DEFAULT_URL = 'https://api.openai.com/v1';
+/** @internal Read by the registry's per-call url policy. */
+export const DEFAULT_URL = 'https://api.openai.com/v1';
 
 /**
  * The OpenAI provider: the Responses API by default, chat completions when

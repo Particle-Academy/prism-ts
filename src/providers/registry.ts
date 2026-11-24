@@ -1,11 +1,12 @@
 import { PrismError } from '../errors.js';
-import { assertCleanUrl } from '../internal/provider-config.js';
+import { assertPerCallUrl } from '../internal/per-call-url.js';
+import { assertCleanUrl, environmentFlag, environmentUrl, sameEndpoint } from '../internal/provider-config.js';
 import type { Provider } from './provider.js';
-import { Anthropic } from './anthropic/anthropic.js';
+import { Anthropic, DEFAULT_URL as ANTHROPIC_URL } from './anthropic/anthropic.js';
 import type { AnthropicConfig } from './anthropic/anthropic.js';
-import { Mistral } from './mistral/mistral.js';
+import { Mistral, DEFAULT_URL as MISTRAL_URL } from './mistral/mistral.js';
 import type { MistralConfig } from './mistral/mistral.js';
-import { OpenAI } from './openai/openai.js';
+import { OpenAI, DEFAULT_URL as OPENAI_URL } from './openai/openai.js';
 import type { OpenAIConfig } from './openai/openai.js';
 
 export type ProviderFactory = (config: Record<string, unknown>) => Provider;
@@ -16,9 +17,47 @@ const providers = new Map<string, ProviderFactory>([
   ['openai', (config) => new OpenAI(config as OpenAIConfig)],
 ]);
 
+/**
+ * Who may choose a provider's address for ONE call. Held per key, read from
+ * configuration only, and checked by `resolveProvider()` before the factory
+ * runs. A per-call `allowPrivatePerCallUrl` is never read.
+ *
+ * @internal
+ */
+export interface PerCallUrlPolicy {
+  /** The configured url, or null when there is none (a custom provider). */
+  configuredUrl(): string | null;
+  /** The configuration opt-out; read on every call, never from the call. */
+  allowPrivatePerCallUrl(): boolean;
+  /** A provider's own url check, run first so its error is kept. */
+  assertUrl?(url: unknown): void;
+}
+
+/** Built-ins: `<PREFIX>_URL` or the default, and `<PREFIX>_ALLOW_PRIVATE_PER_CALL_URL`. */
+function builtInPolicy(prefix: string, fallback: string, nullFallback?: string): PerCallUrlPolicy {
+  return {
+    configuredUrl: () => environmentUrl(`${prefix}_URL`, fallback, nullFallback),
+    allowPrivatePerCallUrl: () => environmentFlag(`${prefix}_ALLOW_PRIVATE_PER_CALL_URL`),
+  };
+}
+
+// An object, not `[key, value]` lines: agent/agent.mjs reads the provider
+// list from the `providers` map's line shape, and must not count these twice.
+const policies = new Map<string, PerCallUrlPolicy>(Object.entries({
+  anthropic: builtInPolicy('ANTHROPIC', ANTHROPIC_URL, ANTHROPIC_URL),
+  mistral: builtInPolicy('MISTRAL', MISTRAL_URL),
+  openai: builtInPolicy('OPENAI', OPENAI_URL),
+}));
+
 export interface RegisterProviderOptions {
   /** Replace a provider already registered under `key`, including a built-in. */
   replace?: boolean;
+  /**
+   * Let a per-call `url` point this provider at a loopback, private,
+   * link-local or metadata address. Off unless exactly `true`. It belongs to
+   * the registration, never to a call.
+   */
+  allowPrivatePerCallUrl?: boolean;
 }
 
 /**
@@ -40,8 +79,28 @@ export interface RegisterProviderOptions {
  *   InvalidArgumentException; it carries no Prism error code).
  */
 export function registerProvider(key: string, factory: ProviderFactory, options: RegisterProviderOptions = {}): void {
+  const allow = options.allowPrivatePerCallUrl === true;
+  registerProviderWithPolicy(key, factory, options, {
+    configuredUrl: () => null,
+    allowPrivatePerCallUrl: () => allow,
+  });
+}
+
+/**
+ * `registerProvider()` with the per-call url policy given explicitly, for
+ * `configureProviders()`, whose entries carry a configured url.
+ *
+ * @internal
+ */
+export function registerProviderWithPolicy(
+  key: string,
+  factory: ProviderFactory,
+  options: RegisterProviderOptions,
+  policy: PerCallUrlPolicy,
+): void {
   assertRegistrable(key, options);
   providers.set(key, factory);
+  policies.set(key, policy);
 }
 
 /**
@@ -95,7 +154,14 @@ export function registeredProviders(): readonly string[] {
 }
 
 /**
+ * A per-call `config.url` is checked before the factory runs, so before any
+ * request: it may not name a loopback, private, link-local or metadata
+ * address unless it is the configured endpoint itself or the provider's
+ * CONFIGURATION opts out (see `assertPerCallUrl`).
+ *
  * @throws PrismError code `unsupported_provider_action` for an unregistered key.
+ * @throws PrismUrlRefused `private_address_refused` / `scheme_not_allowed` for
+ *   a per-call url that is refused.
  */
 export function resolveProvider(key: string, config: Record<string, unknown> = {}): Provider {
   const factory = providers.get(key);
@@ -109,6 +175,21 @@ export function resolveProvider(key: string, config: Record<string, unknown> = {
 
   // Before the factory runs, so a custom provider is held to the same rule.
   assertCleanUrl(config.url);
+  assertPerCallUrlAllowed(policies.get(key), config.url);
 
   return factory(config);
+}
+
+function assertPerCallUrlAllowed(policy: PerCallUrlPolicy | undefined, url: unknown): void {
+  // Absent or not a string: left to the provider's own type checks.
+  if (typeof url !== 'string') return;
+
+  // Every registered key has a policy; a missing one is held to the strictest.
+  policy?.assertUrl?.(url);
+
+  const configured = policy?.configuredUrl() ?? null;
+  if (configured !== null && sameEndpoint(url, configured)) return;
+  if (policy?.allowPrivatePerCallUrl() === true) return;
+
+  assertPerCallUrl(url);
 }

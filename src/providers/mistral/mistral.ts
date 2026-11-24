@@ -37,7 +37,8 @@ export interface MistralConfig {
   binaryTransport?: HttpBinaryTransport;
 }
 
-const DEFAULT_URL = 'https://api.mistral.ai/v1';
+/** @internal Read by the registry's per-call url policy. */
+export const DEFAULT_URL = 'https://api.mistral.ai/v1';
 
 /**
  * The Mistral provider.

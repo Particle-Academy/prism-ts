@@ -34,7 +34,8 @@ export interface AnthropicConfig {
   streamTransport?: HttpStreamTransport;
 }
 
-const DEFAULT_URL = 'https://api.anthropic.com/v1';
+/** @internal Read by the registry's per-call url policy. */
+export const DEFAULT_URL = 'https://api.anthropic.com/v1';
 
 /**
  * Pinned rather than tracking latest.

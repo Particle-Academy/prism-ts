@@ -171,6 +171,39 @@ A `url`, per call or from `OPENAI_URL` / `ANTHROPIC_URL` / `MISTRAL_URL`, that
 contains whitespace or a control character anywhere, including at either end,
 is refused with a `TypeError` before any request is made. It is not trimmed.
 
+#### Per-call urls may not choose a private address
+
+A configured url (`OPENAI_URL`, `ANTHROPIC_URL`, `MISTRAL_URL`, the provider
+default, a `configureProviders()` entry's `url`) may point anywhere, including
+`127.0.0.1`. A `url` passed with ONE call — `using(provider, model, { url })` —
+may not point at a loopback, private, link-local or metadata address. It is
+checked before the provider is built, so before any request, for built-in,
+compatible and `registerProvider()` providers alike, and refused with
+`PrismUrlRefused`:
+
+- `private_address_refused` for a loopback, RFC 1918, link-local, CGNAT,
+  unique-local, IPv4-mapped, documentation, multicast or reserved address in
+  any spelling a resolver accepts (`127.1`, `2130706433`, `0x7f000001`,
+  `0177.0.0.1`, `[::ffff:127.0.0.1]`, an address inside a NAT64 or 6to4 one),
+  and for `localhost`, `*.localhost`, `localhost.localdomain`, `ip6-localhost`,
+  `ip6-loopback`, `metadata`, `metadata.google.internal` and `instance-data`;
+- `scheme_not_allowed` for anything that is not an absolute `http://` or
+  `https://` url with a host.
+
+The message never contains the url or the address. The check needs no network:
+a hostname that RESOLVES to a private address is not caught by it.
+
+A per-call url that is the configured endpoint itself (the same endpoint by the
+rule above) is not checked. To let per-call urls reach private addresses, opt out
+in CONFIGURATION — never per call; an `allowPrivatePerCallUrl` passed with a
+call is ignored:
+
+| Provider | Opt-out |
+| --- | --- |
+| `openai`, `anthropic`, `mistral` | `OPENAI_ALLOW_PRIVATE_PER_CALL_URL`, `ANTHROPIC_ALLOW_PRIVATE_PER_CALL_URL`, `MISTRAL_ALLOW_PRIVATE_PER_CALL_URL` set to `true` (or `(true)`, any case); any other value is off |
+| a `configureProviders()` entry | `allowPrivatePerCallUrl: true` in the entry |
+| `registerProvider(key, factory, options)` | `{ allowPrivatePerCallUrl: true }` |
+
 ### OpenAI-compatible providers
 
 `configureProviders()` registers named OpenAI-compatible servers (vLLM, LM
@@ -189,7 +222,7 @@ await Prism.text().using('my-vllm', 'qwen3').withPrompt('Hi').asText();
 
 An entry takes `driver` (only `'openai-compatible'`), `url`, and optionally
 `apiKey`, `apiFormat` (`'chat_completions'`, the default, or `'responses'`),
-`organization` and `project`.
+`organization`, `project` and `allowPrivatePerCallUrl` (a boolean; see below).
 
 - **Only the entry's own credentials are sent.** Nothing is read from the
   environment: not `OPENAI_API_KEY`, `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`,
@@ -198,8 +231,11 @@ An entry takes `driver` (only `'openai-compatible'`), `url`, and optionally
 - **A per-call `url` that names a different endpoint drops the entry's key,
   organization and project**; pass `apiKey` with it if that endpoint needs one.
 - **`url` must be an absolute `http://` or `https://` url with a host.**
-  Private, loopback and link-local addresses are allowed, because the url is
-  your configuration, not user input. The same check applies to a per-call url.
+  Private, loopback and link-local addresses are allowed in the ENTRY, because
+  the entry is your configuration, not user input. A per-call url gets the same
+  check and is then refused for a private address unless the entry sets
+  `allowPrivatePerCallUrl: true` (see "Per-call urls may not choose a private
+  address" above).
 - **Names follow `registerProvider()`'s rules**: the same ASCII allow-list,
   never trimmed, and refused when they match a built-in (`openai`, `OpenAI`,
   `ANTHROPIC`) or an earlier registration case-insensitively, unless

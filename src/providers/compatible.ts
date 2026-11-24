@@ -1,6 +1,6 @@
 import { assertCleanUrl, sameEndpoint } from '../internal/provider-config.js';
 import { isJsonObject } from '../json.js';
-import { asciiLower, assertRegistrable, registerProvider } from './registry.js';
+import { asciiLower, assertRegistrable, registerProviderWithPolicy } from './registry.js';
 import type { RegisterProviderOptions } from './registry.js';
 import { OpenAI } from './openai/openai.js';
 import type { OpenAIConfig } from './openai/openai.js';
@@ -15,20 +15,32 @@ import type { OpenAIConfig } from './openai/openai.js';
  */
 export interface CompatibleProviderEntry {
   driver: 'openai-compatible';
-  /** An absolute http or https url, e.g. `http://10.0.0.5:8000/v1`. Private addresses are allowed. */
+  /**
+   * An absolute http or https url, e.g. `http://10.0.0.5:8000/v1`. This is
+   * CONFIGURATION, so private addresses are allowed here. A per-call `url`
+   * passed to `using()` is not: it is refused for a loopback, private,
+   * link-local or metadata address unless `allowPrivatePerCallUrl` is set.
+   */
   url: string;
   apiKey?: string | null;
   /** `'chat_completions'` (the default) or `'responses'`. */
   apiFormat?: string | null;
   organization?: string | null;
   project?: string | null;
+  /**
+   * Let a per-call `url` point this entry at a loopback, private, link-local
+   * or metadata address. Off unless exactly `true`; a per-call
+   * `allowPrivatePerCallUrl` is never read.
+   */
+  allowPrivatePerCallUrl?: boolean | null;
 }
 
-export type ConfigureProvidersOptions = RegisterProviderOptions;
+/** Only `replace`: the per-call url opt-out is set per entry. */
+export type ConfigureProvidersOptions = Pick<RegisterProviderOptions, 'replace'>;
 
 const DRIVER = 'openai-compatible';
 const API_FORMATS = ['chat_completions', 'responses'];
-const ENTRY_KEYS = new Set(['driver', 'url', 'apiKey', 'apiFormat', 'organization', 'project']);
+const ENTRY_KEYS = new Set(['driver', 'url', 'apiKey', 'apiFormat', 'organization', 'project', 'allowPrivatePerCallUrl']);
 type CredentialKey = 'apiKey' | 'organization' | 'project';
 
 /** The per-call settings a compatible provider takes from `using(name, model, config)`. */
@@ -47,7 +59,10 @@ const PER_CALL_PASSTHROUGH = ['transport', 'streamTransport', 'binaryTransport']
  * case are refused either way.
  *
  * A per-call `url` that names a different endpoint drops the entry's key,
- * organization and project; the per-call config must bring its own.
+ * organization and project; the per-call config must bring its own. It is
+ * also refused, before any request, when it names a loopback, private,
+ * link-local or metadata address, unless the entry sets
+ * `allowPrivatePerCallUrl: true`.
  *
  * No refusal message contains a url, a key or a header value.
  *
@@ -76,8 +91,13 @@ export function configureProviders(
     validated.push([name, validateEntry(entry)]);
   }
 
+  const registration = { replace: options.replace === true };
   for (const [name, entry] of validated) {
-    registerProvider(name, (config) => new OpenAI(compatibleConfig(entry, config)), options);
+    registerProviderWithPolicy(name, (config) => new OpenAI(compatibleConfig(entry, config)), registration, {
+      configuredUrl: () => entry.url,
+      allowPrivatePerCallUrl: () => entry.allowPrivatePerCallUrl,
+      assertUrl: assertCompatibleUrl,
+    });
   }
 }
 
@@ -87,6 +107,7 @@ interface ValidEntry {
   apiFormat: string;
   organization: string | null;
   project: string | null;
+  allowPrivatePerCallUrl: boolean;
 }
 
 function validateEntry(entry: unknown): ValidEntry {
@@ -96,13 +117,13 @@ function validateEntry(entry: unknown): ValidEntry {
 
   if (Object.keys(entry).some((key) => !ENTRY_KEYS.has(key))) {
     throw new TypeError(
-      'That is not a valid provider entry: the settings are driver, url, apiKey, apiFormat, organization and project.',
+      'That is not a valid provider entry: the settings are driver, url, apiKey, apiFormat, organization, project and allowPrivatePerCallUrl.',
     );
   }
 
   // Every field is read ONCE, so the value checked is the value kept: an
   // accessor cannot hand the check one url and the provider another.
-  const { driver, url, apiKey, apiFormat, organization, project } = entry;
+  const { driver, url, apiKey, apiFormat, organization, project, allowPrivatePerCallUrl } = entry;
 
   if (driver !== DRIVER) {
     throw new TypeError('That is not a supported provider driver: a configured provider must use the "openai-compatible" driver.');
@@ -116,7 +137,18 @@ function validateEntry(entry: unknown): ValidEntry {
     apiFormat: apiFormatValue(apiFormat) ?? 'chat_completions',
     organization: credentialValue(organization),
     project: credentialValue(project),
+    allowPrivatePerCallUrl: optOutValue(allowPrivatePerCallUrl),
   };
+}
+
+/** Only boolean `true` opts out; absent, null and false do not; anything else is refused. */
+function optOutValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value !== 'boolean') {
+    throw new TypeError('That is not a valid provider entry: allowPrivatePerCallUrl must be a boolean or null.');
+  }
+
+  return value;
 }
 
 function credentialValue(value: unknown): string | null {
@@ -145,9 +177,10 @@ function apiFormatValue(value: unknown): string | null {
  * `http:host` or `http:\\host` cannot be read as a url by one language and
  * refused by another.
  *
- * Private, loopback and link-local hosts are ALLOWED: the url is operator
- * configuration, and the guarded property is that no other credential goes
- * there.
+ * Private, loopback and link-local hosts pass THIS check: an entry url is
+ * operator configuration, and the guarded property is that no other
+ * credential goes there. A per-call url is additionally held to
+ * `assertPerCallUrl()` by `resolveProvider()`, after this check.
  */
 function assertCompatibleUrl(url: unknown): asserts url is string {
   const refusal = 'That is not a valid provider url: a provider url must be an absolute http or https url with a host.';

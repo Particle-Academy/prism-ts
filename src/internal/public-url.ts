@@ -47,20 +47,30 @@ const EMBEDDING: readonly (readonly [string, number, number])[] = [
   ['2002::', 16, 2],
 ];
 
-function assertPublicAddress(address: string): void {
+/**
+ * True when `address` is a valid IPv4 or IPv6 literal outside every refused
+ * range: the single place the ranges are judged, used by the guarded fetch
+ * and by the per-call provider url check alike. A zone index (`%`) or anything
+ * that is not an address literal is not public.
+ */
+export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
-  if (family === 6 && !address.includes('%')) {
+  if (address.includes('%') || family === 0) return false;
+  if (family === 6) {
     for (const [prefix, bits, offset] of EMBEDDING) {
       const range = new BlockList();
       range.addSubnet(prefix, bits, 'ipv6');
       if (range.check(address, 'ipv6')) {
-        assertPublicAddress(ipv6Bytes(address).slice(offset, offset + 4).join('.'));
-        return;
+        return isPublicAddress(ipv6Bytes(address).slice(offset, offset + 4).join('.'));
       }
     }
   }
-  if (address.includes('%') || family === 0 ||
-    (family === 4 ? ipv4.check(address, 'ipv4') : ipv6.check(address, 'ipv6'))) {
+
+  return !(family === 4 ? ipv4.check(address, 'ipv4') : ipv6.check(address, 'ipv6'));
+}
+
+function assertPublicAddress(address: string): void {
+  if (!isPublicAddress(address)) {
     throw new PrismUrlRefused('private_address_refused', 'A guarded fetch refuses private, reserved or invalid addresses.');
   }
 }
