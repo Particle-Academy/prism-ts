@@ -20,7 +20,8 @@ export const dnsHostResolver: HostResolver = {
 // Every range a guarded fetch refuses, spelled identically in all three
 // languages rather than delegated to a language's IP helpers (G-89): PHP's
 // filter_var flags missed CGNAT, where Alibaba Cloud's metadata endpoint lives.
-// All IPv4-compatible IPv6 spellings are refused consistently.
+// All IPv4-compatible IPv6 spellings are refused consistently, SIIT
+// IPv4-translated (::ffff:0:0:0/96) included.
 // Keep lists separate: Node maps IPv4 into IPv6 for BlockList comparisons, so
 // blocking mapped IPv6 in a shared list would also block public IPv4.
 const ipv4 = new BlockList();
@@ -32,7 +33,7 @@ for (const [address, prefix] of [
 ] as const) ipv4.addSubnet(address, prefix, 'ipv4');
 const ipv6 = new BlockList();
 for (const [address, prefix] of [
-  ['::', 96], ['::ffff:0:0', 96], ['64:ff9b:1::', 48], ['100::', 64],
+  ['::', 96], ['::ffff:0:0', 96], ['::ffff:0:0:0', 96], ['64:ff9b:1::', 48], ['100::', 64],
   ['2001::', 32], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10],
   ['fec0::', 10], ['ff00::', 8],
 ] as const) ipv6.addSubnet(address, prefix, 'ipv6');
@@ -64,6 +65,14 @@ export function isPublicAddress(address: string): boolean {
         return isPublicAddress(ipv6Bytes(address).slice(offset, offset + 4).join('.'));
       }
     }
+    // ISATAP (RFC 5214) puts an IPv4 address in the low 32 bits behind the
+    // interface identifier 0000:5efe (0200:5efe with the u bit, and the g bit
+    // may be set too), under ANY prefix. On an ISATAP site the packet is
+    // tunnelled to that IPv4 address, so it is judged as well; the prefix is
+    // still judged below.
+    const bytes = ipv6Bytes(address);
+    if (((bytes[8] ?? 0) & 0xfc) === 0 && bytes[9] === 0 && bytes[10] === 0x5e && bytes[11] === 0xfe
+      && !isPublicAddress(bytes.slice(12, 16).join('.'))) return false;
   }
 
   return !(family === 4 ? ipv4.check(address, 'ipv4') : ipv6.check(address, 'ipv6'));

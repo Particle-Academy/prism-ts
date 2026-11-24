@@ -185,14 +185,20 @@ compatible and `registerProvider()` providers alike, and refused with
   unique-local, IPv4-mapped, documentation, multicast or reserved address
   written as a literal, including the shortened and numeric forms (`127.1`,
   `2130706433`, `0x7f000001`, `0177.0.0.1`, `[::ffff:127.0.0.1]`, an address
-  inside a NAT64 or 6to4 one), and for `localhost`, `*.localhost`,
-  `localhost.localdomain`, `ip6-localhost`, `ip6-loopback`, `metadata`,
-  `metadata.google.internal` and `instance-data`. Trailing dots are ignored, so
+  inside a NAT64, 6to4 or ISATAP one, and the IPv4-translated range
+  `::ffff:0:0:0/96`), and for `localhost`, `*.localhost`,
+  `*.localhost.localdomain`, the loopback and local names of the stock hosts
+  files (`localhost.localdomain`, `localhost4`, `localhost6` and their
+  `.localdomainN` forms, `ip6-localhost`, `ip6-loopback`, `ipv6-localhost`,
+  `broadcasthost` and similar), `metadata`, `metadata.google.internal` and
+  `instance-data`. Trailing dots are ignored, so
   `localhost.` is refused like `localhost`;
 - `private_address_refused` also for a host, as written, that holds anything
   other than letters, digits, `-` and `.` (or an IPv6 address in brackets). A
   percent escape is refused, not decoded, and so is a backslash before the
-  path;
+  path. Invisible and formatting characters (zero-width joiners, soft
+  hyphens and the like) and `ß` and `ς`, which IDNA converters handle
+  differently, are refused anywhere before the path;
 - `scheme_not_allowed` for anything that is not an absolute `http://` or
   `https://` url with a host.
 
