@@ -234,6 +234,21 @@ describe('provider names', () => {
   });
 });
 
+describe('the provider key', () => {
+  it('is the entry name on the request, never relabelled openai', async () => {
+    const name = unique('Telemetry-Name');
+    configureProviders({ [name]: entry() });
+    fake.reply(jsonReply(OK));
+    const keys: (string | null)[] = [];
+
+    const pending = Prism.text().using(name, 'local-model').withPrompt('hi');
+    keys.push(pending.providerKey(), pending.toRequest().provider());
+    await pending.asText();
+
+    expect(keys).toEqual([name, name]);
+  });
+});
+
 describe('entry validation is all-or-nothing', () => {
   it('registers nothing when any entry is invalid', () => {
     const good = unique();

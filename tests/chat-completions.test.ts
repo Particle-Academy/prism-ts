@@ -341,9 +341,9 @@ describe.each(ROUTES)('chat_completions stream on $label', ({ name, config }) =>
       '{"stream":true,"model":"gpt-test","messages":[{"role":"user","content":[{"type":"text","text":"Hi"}]}],"max_tokens":null,'
       + '"tools":[{"type":"function","function":{"name":"weather","description":"Weather","parameters":{"type":"object","properties":{"city":{"description":"City","type":"string"}},"required":["city"]}}}]}',
     );
-    expect(events.map((event) => event.constructor.name)).toEqual([
-      'StreamStartEvent', 'TextStartEvent', 'TextDeltaEvent', 'TextDeltaEvent', 'TextCompleteEvent', 'StreamEndEvent',
-    ]);
+    const order = [StreamStartEvent, TextStartEvent, TextDeltaEvent, TextDeltaEvent, TextCompleteEvent, StreamEndEvent];
+    expect(events).toHaveLength(order.length);
+    order.forEach((kind, index) => expect(events[index]).toBeInstanceOf(kind));
     expect((events[0] as StreamStartEvent).model).toBe('gpt-test');
     expect((events[2] as TextDeltaEvent).delta).toBe('Hel');
     expect((events[4] as TextCompleteEvent).text).toBe('Hello');

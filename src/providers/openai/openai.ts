@@ -65,15 +65,30 @@ import { buildRequestBody } from './build-request-body.js';
 import { parseTextResponse } from './parse-response.js';
 import { parseRateLimits } from './rate-limits.js';
 import { withoutTrailingSlashes } from '../../internal/url.js';
-import { configuredString, configuredUrl, inheritsEnvironmentCredentials, scopedNullableString, scopedString } from '../../internal/provider-config.js';
+import { assertCleanUrl, configuredString, configuredUrl, inheritsEnvironmentCredentials, scopedNullableString, scopedString } from '../../internal/provider-config.js';
+import { buildChatStreamBody, buildChatStructuredBody, buildChatTextBody } from './chat-completions/build-request-body.js';
+import { parseChatTextResponse } from './chat-completions/parse-response.js';
+import { ChatCompletionsStreamMapper } from './chat-completions/stream-events.js';
 
 export interface OpenAIConfig {
   apiKey?: string | null;
   url?: string;
   organization?: string | null;
   project?: string | null;
-  /** Only `'responses'` is implemented; the chat-completions format is not ported. */
+  /**
+   * `'responses'` (the default) or `'chat_completions'`, which posts text,
+   * structured and stream calls to `<url>/chat/completions`. Any other value
+   * is refused when one of those calls is made.
+   */
   apiFormat?: string | null;
+  /**
+   * Read nothing from the environment: no `OPENAI_API_KEY`, `OPENAI_URL`,
+   * `OPENAI_ORGANIZATION`, `OPENAI_PROJECT` or `OPENAI_API_FORMAT`. Only the
+   * values passed here are used, a missing key sends no `Authorization`
+   * header, and `url` is required. Set by `configureProviders()` for every
+   * compatible provider, so its requests carry only its own credentials.
+   */
+  ignoreEnvironment?: boolean;
   transport?: HttpTransport;
   streamTransport?: HttpStreamTransport;
   binaryTransport?: HttpBinaryTransport;
@@ -82,7 +97,8 @@ export interface OpenAIConfig {
 const DEFAULT_URL = 'https://api.openai.com/v1';
 
 /**
- * The OpenAI provider, Responses API only.
+ * The OpenAI provider: the Responses API by default, chat completions when
+ * `apiFormat` is `'chat_completions'`.
  *
  * Configuration is explicit first and environment second, so a test can pin
  * every field and a deployment can set none of them.
@@ -109,23 +125,46 @@ export class OpenAI extends Provider {
   constructor(config: OpenAIConfig = {}) {
     super();
 
-    this.url = configuredUrl(config.url, 'OPENAI_URL', DEFAULT_URL);
-    // Environment credentials belong to the environment's endpoint only.
-    const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'OPENAI_URL', DEFAULT_URL);
-    this.apiKey = scopedString(config.apiKey, 'OPENAI_API_KEY', inherit, '', '');
-    this.organization = scopedNullableString(config.organization, 'OPENAI_ORGANIZATION', inherit);
-    this.project = scopedNullableString(config.project, 'OPENAI_PROJECT', inherit);
-    this.apiFormat = configuredString(config.apiFormat, 'OPENAI_API_FORMAT', 'responses', 'responses');
+    if (config.ignoreEnvironment === true) {
+      if (typeof config.url !== 'string') {
+        throw new TypeError('That is not a valid provider url: a provider that ignores the environment needs a url.');
+      }
+      assertCleanUrl(config.url);
+      this.url = config.url;
+      this.apiKey = explicitString(config.apiKey, 'apiKey') ?? '';
+      this.organization = explicitString(config.organization, 'organization');
+      this.project = explicitString(config.project, 'project');
+      this.apiFormat = explicitString(config.apiFormat, 'apiFormat') ?? 'responses';
+    } else {
+      this.url = configuredUrl(config.url, 'OPENAI_URL', DEFAULT_URL);
+      // Environment credentials belong to the environment's endpoint only.
+      const inherit = config.url === undefined || inheritsEnvironmentCredentials(this.url, 'OPENAI_URL', DEFAULT_URL);
+      this.apiKey = scopedString(config.apiKey, 'OPENAI_API_KEY', inherit, '', '');
+      this.organization = scopedNullableString(config.organization, 'OPENAI_ORGANIZATION', inherit);
+      this.project = scopedNullableString(config.project, 'OPENAI_PROJECT', inherit);
+      this.apiFormat = configuredString(config.apiFormat, 'OPENAI_API_FORMAT', 'responses', 'responses');
+    }
     this.#transport = config.transport ?? fetchTransport;
     this.#streamTransport = config.streamTransport ?? fetchStreamTransport;
     this.#binaryTransport = config.binaryTransport ?? fetchBinaryTransport;
   }
 
   override async text(request: TextRequest): Promise<TextResponse> {
+    if (this.#format('text') === 'chat_completions') {
+      return this.#sendChat(request, buildChatTextBody(request), false);
+    }
+
     return this.#send('text', request, buildRequestBody(request));
   }
 
   override async structured(request: StructuredRequest): Promise<StructuredResponse> {
+    if (this.#format('structured') === 'chat_completions') {
+      return structuredFromTextResponse(await this.#sendChat(request, buildChatStructuredBody(request), true), {
+        parsedStep: true,
+        assistantAdditionalContent: false,
+      });
+    }
+
     // The response is parsed by the TEXT parser and then given its structured
     // reading, so finish reasons, token-limit failures, usage and rate limits
     // behave identically on both paths by construction.
@@ -142,6 +181,12 @@ export class OpenAI extends Provider {
    * two cannot drift apart into different requests that happen to look alike.
    */
   override async *stream(request: TextRequest): AsyncGenerator<StreamEvent> {
+    if (this.#format('stream') === 'chat_completions') {
+      yield* this.#streamChat(request);
+
+      return;
+    }
+
     const response = await this.#streamTransport({
       url: `${withoutTrailingSlashes(this.url)}/responses`,
       method: 'POST',
@@ -485,11 +530,73 @@ export class OpenAI extends Provider {
     return decoded;
   }
 
-  async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
-    if (this.apiFormat !== 'responses') {
-      throw PrismError.unsupportedProviderAction(`${action} in the ${this.apiFormat} api format`, this.providerName);
+  /**
+   * The api format for a text, structured or stream call. Only the two this
+   * port implements are accepted; anything else is refused before a request.
+   */
+  #format(action: string): 'responses' | 'chat_completions' {
+    if (this.apiFormat === 'responses' || this.apiFormat === 'chat_completions') {
+      return this.apiFormat;
     }
 
+    throw PrismError.unsupportedProviderAction(`${action} in the ${this.apiFormat} api format`, this.providerName);
+  }
+
+  async #sendChat(request: TextRequest, body: JsonObject, structured: boolean): Promise<TextResponse> {
+    const response = await this.#transport({
+      url: `${withoutTrailingSlashes(this.url)}/chat/completions`,
+      method: 'POST',
+      headers: this.headers(),
+      body: canonicalJson(body),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(describeHttpFailure(this.providerName, response.status, response.body), {
+        httpStatus: response.status,
+        responseBody: response.rawBody,
+      });
+    }
+
+    return parseChatTextResponse(request, response.body, {
+      rateLimits: parseRateLimits(response.headers),
+      structured,
+    });
+  }
+
+  async *#streamChat(request: TextRequest): AsyncGenerator<StreamEvent> {
+    const response = await this.#streamTransport({
+      url: `${withoutTrailingSlashes(this.url)}/chat/completions`,
+      method: 'POST',
+      headers: { ...this.headers(), Accept: 'text/event-stream' },
+      body: canonicalJson(buildChatStreamBody(request)),
+      clientOptions: request.clientOptions(),
+    });
+
+    if (response.status >= 400) {
+      throw PrismError.providerResponseError(
+        describeHttpFailure(this.providerName, response.status, await collectJson(response.chunks)),
+        { httpStatus: response.status },
+      );
+    }
+
+    const mapper = new ChatCompletionsStreamMapper(request.model());
+
+    for await (const payload of failureAwareSse(sseData(response.chunks), () => mapper.failureUsage())) {
+      if (payload instanceof ErrorEvent) { yield payload; continue; }
+      // The stream closes with a literal `[DONE]`, which is not JSON.
+      if (payload === '[DONE]') break;
+
+      const parsed = parsePayload(payload);
+      if (parsed === null) { yield mapper.decodeFailure(); return; }
+
+      yield* mapper.map(parsed);
+    }
+
+    yield* mapper.finish();
+  }
+
+  async #send(action: string, request: TextRequest, body: JsonObject): Promise<TextResponse> {
     const response = await this.#transport({
       url: `${withoutTrailingSlashes(this.url)}/responses`,
       method: 'POST',
@@ -529,6 +636,14 @@ export class OpenAI extends Provider {
 
     return headers;
   }
+}
+
+/** A credential passed straight through: a string, or null/undefined for none. */
+function explicitString(value: unknown, name: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw new TypeError(`Invalid string configuration for ${name}.`);
+
+  return value;
 }
 
 function describeHttpFailure(provider: string, status: number, body: unknown): string {
