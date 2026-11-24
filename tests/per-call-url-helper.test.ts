@@ -79,6 +79,8 @@ describe('assertPerCallUrl, invisible and deviation characters', () => {
     ['hangul filler', 'http://localhost\u3164/'],
     ['tag character', 'http://localhost\u{E0001}/'],
     ['no-break space', 'http://localhost\u00A0/'],
+    ['capital sharp s (maps to a deviation)', 'http://loca\u1E9Elhost/'],
+    ['capital sharp s after loopback', 'http://127.0.0.1\u1E9E/'],
     ['sharp s (deviation)', 'https://fa\u00DF.example/v1'],
     ['final sigma (deviation)', 'https://\u03BB\u03BF\u03B3\u03BF\u03C2.example/v1'],
     ['joiner in userinfo', 'http://user\u200D@gateway.example/v1'],
@@ -87,4 +89,36 @@ describe('assertPerCallUrl, invisible and deviation characters', () => {
       expect.objectContaining({ code: 'private_address_refused', message: HOST_MESSAGE }) as Error,
     );
   });
+});
+
+describe('assertPerCallUrl, non-ASCII hosts', () => {
+  it.each([
+    'https://bücher.example/v1', 'http://１２７.０.０.１/', 'http://loc％61lhost/',
+    'https://مثال.3com.example/v1', 'https://bücher.ab--cd.example/v1',
+  ])('refuses %s with its own code', (url) => {
+    expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'non_ascii_host_use_punycode' }) as Error);
+  });
+
+  it.each([
+    'https://xn--bcher-kva.example/v1', 'https://xn--strae-oqa.de/v1', 'https://xn--mgbh0fb.3com.example/v1',
+    'https://xn--bcher-kva.ab--cd.example/v1', 'https://bü@gateway.example/v1',
+  ])('allows %s', (url) => {
+    expect(() => assertPerCallUrl(url)).not.toThrow();
+  });
+});
+
+describe('assertPerCallUrl, IPv6 literals with a dotted IPv4 tail', () => {
+  it.each(['http://[2606:4700::8.8.8.8]/v1', 'http://[2606:4700::1:8.8.8.8]/v1', 'http://[2606:4700::5efe:8.8.8.8]/v1'])(
+    'allows %s',
+    (url) => {
+      expect(() => assertPerCallUrl(url)).not.toThrow();
+    },
+  );
+
+  it.each(['http://[2606:4700::5efe:127.0.0.1]/v1', 'http://[64:ff9b::169.254.169.254]/v1', 'http://[::127.0.0.1]/v1'])(
+    'refuses %s',
+    (url) => {
+      expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'private_address_refused' }) as Error);
+    },
+  );
 });

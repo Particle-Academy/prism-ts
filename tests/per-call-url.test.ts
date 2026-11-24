@@ -145,13 +145,17 @@ describe('a per-call host with an escape or a character no host may hold', () =>
   );
 
   it.each([
-    ['https://gateway.example./v1', 'https://gateway.example./v1'],
-    ['https://bücher.example/v1', 'https://b'],
-  ])('dispatches to the public host %s', async (url, prefix) => {
+    'https://gateway.example./v1',
+    'https://xn--bcher-kva.example/v1',
+    'https://xn--strae-oqa.de/v1',
+    'https://xn--mgbn2ecje63gr19l.ir/v1',
+    'https://xn--mgbh0fb.3com.example/v1',
+    'https://xn--bcher-kva.ab--cd.example/v1',
+  ])('dispatches to the public host %s', async (url) => {
     replyOnce();
     await ask('openai', { url });
     expect(fake.sent).toHaveLength(1);
-    expect(fake.sent[0]?.url.startsWith(prefix)).toBe(true);
+    expect(fake.sent[0]?.url.startsWith(url)).toBe(true);
   });
 
   it('refuses an empty host as a scheme error rather than reading past it', async () => {
@@ -362,4 +366,65 @@ describe('a per-call host with a format, invisible or deviation character', () =
       expect(fake.sent).toHaveLength(0);
     },
   );
+});
+
+const PUNYCODE_MESSAGE = 'A per-call provider url host must be ASCII. Give an international name in its punycode (xn--) form.';
+
+/*
+ * A per-call host is ASCII. IDNA converters disagree on which name some
+ * characters spell, so an international name is given in its punycode form,
+ * which every client sends unchanged. The unicode spelling is refused with its
+ * own code, in all three languages, whatever the name.
+ */
+describe('a non-ASCII per-call host', () => {
+  it.each([
+    ['https://bücher.example/v1', 'bücher'],
+    ['https://пример.рф/v1', 'рф'],
+    ['https://مثال.3com.example/v1', '3com'],
+    ['https://bücher.ab--cd.example/v1', 'ab--cd'],
+    ['http://１２７.０.０.１/v1', '１'],
+  ])('refuses %s with its own code before any request', async (url, fragment) => {
+    const error = await ask('openai', { url });
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('non_ascii_host_use_punycode');
+    expect((error as PrismError).message).toBe(PUNYCODE_MESSAGE);
+    expect((error as PrismError).message).not.toContain(fragment);
+    expect(fake.sent).toHaveLength(0);
+  });
+});
+
+describe('a capital sharp s in a per-call host', () => {
+  it.each(['http://locaẞlhost/v1', 'http://127.0.0.1ẞ/v1', 'https://gatewayẞ.example/v1'])(
+    'refuses %s with the host rule before any request',
+    async (url) => {
+      const error = await ask('openai', { url });
+      expect(error).toBeInstanceOf(PrismError);
+      expect((error as PrismError).code).toBe('private_address_refused');
+      expect((error as PrismError).message).toBe(HOST_MESSAGE);
+      expect(fake.sent).toHaveLength(0);
+    },
+  );
+});
+
+/*
+ * An IPv6 literal may end in a dotted IPv4 address. It is the same address as
+ * its hex spelling and is judged the same way: refused when it, or the IPv4
+ * address it carries, is private.
+ */
+describe('an IPv6 per-call literal with a dotted IPv4 tail', () => {
+  it.each(['http://[2606:4700::8.8.8.8]/v1', 'http://[2606:4700::1:8.8.8.8]/v1', 'http://[2606:4700::5efe:8.8.8.8]/v1'])(
+    'dispatches to the public address %s',
+    async (url) => {
+      replyOnce();
+      await ask('openai', { url });
+      expect(fake.sent).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    'http://[2606:4700::5efe:127.0.0.1]/v1', 'http://[64:ff9b::169.254.169.254]/latest',
+    'http://[::ffff:0:10.0.0.5]/v1', 'http://[::127.0.0.1]/v1',
+  ])('refuses %s before any request', async (url) => {
+    expectRefused(await ask('openai', { url }), 'private_address_refused', url);
+  });
 });
