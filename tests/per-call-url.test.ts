@@ -331,3 +331,35 @@ describe('a per-call url on a custom registered provider', () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a per-call url naming a hosts-file name or an IPv4-carrying IPv6 form', () => {
+  it.each([
+    'http://localhost4:8080/v1', 'http://localhost4.localdomain4/v1', 'http://localhost6:8080/v1',
+    'http://LOCALHOST6.LOCALDOMAIN6./v1', 'http://ipv6-localhost/v1', 'http://broadcasthost/v1',
+    'http://box.localhost.localdomain/v1', 'http://[::ffff:0:127.0.0.1]/v1', 'http://[::ffff:0:a9fe:a9fe]/v1',
+    'http://[2001:4860::5efe:7f00:1]/v1',
+  ])('refuses %s before any request', async (url) => {
+    expectRefused(await ask('openai', { url }), 'private_address_refused', url);
+  });
+});
+
+describe('a per-call host with a format, invisible or deviation character', () => {
+  it.each([
+    'http://loca­lhost/v1', 'http://169.254.169.254⁠/latest', 'http://loca᠆lhost/v1',
+    'http://localhost️/v1', 'https://faß.example/v1', 'https://λογος.example/v1',
+  ])('refuses %s with the host rule before any request', async (url) => {
+    const error = await ask('openai', { url });
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('private_address_refused');
+    expect((error as PrismError).message).toBe(HOST_MESSAGE);
+    expect(fake.sent).toHaveLength(0);
+  });
+
+  it.each(['http://loca‍lhost/v1', 'http://127.0.0.1‍/v1', 'http://127.0.0.1‌/v1'])(
+    'refuses the zero-width joiner in %s before any request',
+    async (url) => {
+      expect(await ask('openai', { url })).toBeInstanceOf(Error);
+      expect(fake.sent).toHaveLength(0);
+    },
+  );
+});
