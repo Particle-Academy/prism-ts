@@ -20,6 +20,14 @@ import { isPublicAddress } from './public-url.js';
  * inside brackets, an IPv6 literal's `:`) is refused, `%` included, and so is
  * a backslash anywhere in the authority, which URL parsers split in different
  * places. Never decoded and re-checked.
+ *
+ * The host must be ASCII. IDNA converters disagree on which name some
+ * characters spell (deviation characters, joiners, characters that map to
+ * one), so no conversion is trusted: an international name is given in its
+ * punycode (`xn--`) form, which every client sends unchanged, and a non-ASCII
+ * host is refused with `non_ascii_host_use_punycode`. A format, invisible or
+ * deviation character anywhere in the authority is refused first, as
+ * `private_address_refused`.
  */
 
 const PRIVATE_MESSAGE =
@@ -27,10 +35,12 @@ const PRIVATE_MESSAGE =
 const SCHEME_MESSAGE = 'A per-call provider url must be an absolute http or https url.';
 const HOST_MESSAGE =
   'A per-call provider url host may hold only letters, digits, hyphens and dots, or an IPv6 address in brackets.';
+const PUNYCODE_MESSAGE =
+  'A per-call provider url host must be ASCII. Give an international name in its punycode (xn--) form.';
 
-/** As written: a name (non-ASCII is left to IDNA), or a bracketed IPv6 literal. */
+/** As written: a name (non-ASCII is refused after the invisible check), or a bracketed IPv6 literal. */
 const WRITTEN_HOST = /^(?:[A-Za-z0-9.\-\u0080-\u{10FFFF}]+|\[[A-Za-z0-9.:-]+\])$/u;
-/** After IDNA, lowercasing and trailing dots: ASCII only. */
+/** After lowercasing and trailing dots: ASCII only. */
 const CANONICAL_HOST = /^[a-z0-9.:-]+$/;
 
 const MAX_IPV4 = 4294967295;
@@ -57,18 +67,18 @@ const LOCAL_NAMES = new Set([
 const LOCAL_SUFFIXES = ['.localhost', '.localhost.localdomain'];
 
 /**
- * Refused anywhere in the authority, before WHATWG URL converts the host:
- * every format or invisible character (Unicode's default-ignorable code
- * points, the Cf format controls, the C1 controls and the non-ASCII spaces)
- * and the four UTS46 deviation characters (U+00DF, U+03C2, U+200C, U+200D).
- * IDNA implementations disagree on these: an HTTP client that deletes a
+ * Refused anywhere in the authority, userinfo included: every format or
+ * invisible character (Unicode's default-ignorable code points, the Cf format
+ * controls, the C1 controls and the non-ASCII spaces), the four UTS46
+ * deviation characters (U+00DF, U+03C2, U+200C, U+200D) and U+1E9E, which
+ * UTS46 maps to U+00DF. IDNA implementations disagree on these: an HTTP client that deletes a
  * zero-width joiner contacts `localhost` where a nontransitional conversion
  * reads a public name. Spelled code point for code point in the reference
  * (`PerCallUrl::INVISIBLE`) and prism-py (`_INVISIBLE`).
  */
 const INVISIBLE =
   // eslint-disable-next-line no-misleading-character-class -- a set of single code points, combining marks included on purpose
-  /[\u0080-\u00A0\u00AD\u00DF\u034F\u03C2\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u115F-\u1160\u1680\u17B4-\u17B5\u1806\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
+  /[\u0080-\u00A0\u00AD\u00DF\u034F\u03C2\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u115F-\u1160\u1680\u17B4-\u17B5\u1806\u180B-\u180F\u1E9E\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
 
 function privateRefusal(): PrismUrlRefused {
   return new PrismUrlRefused('private_address_refused', PRIVATE_MESSAGE);
@@ -110,7 +120,8 @@ function writtenHost(url: string): string | null {
 /**
  * @throws PrismUrlRefused `scheme_not_allowed` for anything that is not an
  *   absolute http(s) url with a host; `private_address_refused` for a refused
- *   address or name, or a numeric host that cannot be read safely.
+ *   address or name, or a numeric host that cannot be read safely;
+ *   `non_ascii_host_use_punycode` for a host that is not ASCII.
  */
 export function assertPerCallUrl(url: string): void {
   // 1. A literal http:// or https:// prefix, case-insensitively.
@@ -123,6 +134,10 @@ export function assertPerCallUrl(url: string): void {
   // A lone surrogate cannot be read as text, so it is refused as well.
   const authority = writtenAuthority(url);
   if (INVISIBLE.test(authority) || /[\uD800-\uDFFF]/u.test(authority)) throw hostRefusal();
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7F]/.test(written)) {
+    throw new PrismUrlRefused('non_ascii_host_use_punycode', PUNYCODE_MESSAGE);
+  }
 
   // 3. The parser's host, so userinfo (`http://evil@127.0.0.1`) is ignored.
   let hostname: string;
@@ -133,9 +148,9 @@ export function assertPerCallUrl(url: string): void {
   }
   if (hostname === '') throw schemeRefusal();
 
-  // 4. One pair of brackets off; WHATWG URL already gives ASCII (punycode),
-  // so anything non-ASCII is a parser surprise and refused. ASCII-lowercase,
-  // then every trailing dot off.
+  // 4. One pair of brackets off; the written host was ASCII, so anything
+  // non-ASCII here is a parser surprise and refused. ASCII-lowercase, then
+  // every trailing dot off.
   let host = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
   // eslint-disable-next-line no-control-regex
   if (/[^\x00-\x7F]/.test(host)) throw privateRefusal();

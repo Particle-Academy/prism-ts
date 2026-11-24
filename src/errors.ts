@@ -16,6 +16,8 @@ export type UrlRefusalCode =
   | 'host_did_not_resolve'
   | 'redirect_refused'
   | 'too_many_redirects'
+  /** A per-call provider url host is not ASCII; give an international name in punycode. */
+  | 'non_ascii_host_use_punycode'
   /** The answer was larger than `maxBytes` (G-90). */
   | 'media_too_large';
 
