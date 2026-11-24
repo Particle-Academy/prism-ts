@@ -378,6 +378,20 @@ describe.each(ROUTES)('chat_completions stream on $label', ({ name, config }) =>
     expect(fake.sent).toHaveLength(1);
   });
 
+  it('keeps the calls when the last fragment and the finish reason share a chunk', async () => {
+    fake.reply(sseReply([
+      { id: 'c1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'weather', arguments: '{"city":' } }] }, finish_reason: null }] },
+      { id: 'c1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"Paris"}' } }] }, finish_reason: 'tool_calls' }] },
+    ]));
+
+    const events = await collect(Prism.text().using(name, 'gpt-test', config).withPrompt('Weather?').withTools([weather()]).asStream());
+    const calls = events.filter((event): event is ToolCallEvent => event instanceof ToolCallEvent);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.toolCall.parsedArguments()).toEqual({ city: 'Paris' });
+    expect((events.at(-1) as StreamEndEvent).finishReason).toBe(FinishReason.ToolCalls);
+  });
+
   it('holds a non-text argument fragment unusable', async () => {
     fake.reply(sseReply([
       { id: 'c1', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'weather', arguments: '{"city":"Paris"' } }] }, finish_reason: null }] },

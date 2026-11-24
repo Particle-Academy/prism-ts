@@ -29,7 +29,7 @@ export type ConfigureProvidersOptions = RegisterProviderOptions;
 const DRIVER = 'openai-compatible';
 const API_FORMATS = ['chat_completions', 'responses'];
 const ENTRY_KEYS = new Set(['driver', 'url', 'apiKey', 'apiFormat', 'organization', 'project']);
-const CREDENTIAL_KEYS = ['apiKey', 'organization', 'project'] as const;
+type CredentialKey = 'apiKey' | 'organization' | 'project';
 
 /** The per-call settings a compatible provider takes from `using(name, model, config)`. */
 const PER_CALL_PASSTHROUGH = ['transport', 'streamTransport', 'binaryTransport'] as const;
@@ -100,31 +100,42 @@ function validateEntry(entry: unknown): ValidEntry {
     );
   }
 
-  if (entry.driver !== DRIVER) {
+  // Every field is read ONCE, so the value checked is the value kept: an
+  // accessor cannot hand the check one url and the provider another.
+  const { driver, url, apiKey, apiFormat, organization, project } = entry;
+
+  if (driver !== DRIVER) {
     throw new TypeError('That is not a supported provider driver: a configured provider must use the "openai-compatible" driver.');
   }
 
-  assertCompatibleUrl(entry.url);
+  assertCompatibleUrl(url);
 
-  for (const key of CREDENTIAL_KEYS) {
-    const value = entry[key];
-    if (value !== undefined && value !== null && typeof value !== 'string') {
-      throw new TypeError('That is not a valid provider entry: apiKey, organization and project must be strings or null.');
-    }
+  return {
+    url,
+    apiKey: credentialValue(apiKey),
+    apiFormat: apiFormatValue(apiFormat) ?? 'chat_completions',
+    organization: credentialValue(organization),
+    project: credentialValue(project),
+  };
+}
+
+function credentialValue(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw new TypeError('That is not a valid provider entry: apiKey, organization and project must be strings or null.');
   }
 
-  const apiFormat = entry.apiFormat ?? 'chat_completions';
-  if (typeof apiFormat !== 'string' || !API_FORMATS.includes(apiFormat)) {
+  return value;
+}
+
+/** null for "not given"; anything given must be one of the two formats. */
+function apiFormatValue(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !API_FORMATS.includes(value)) {
     throw new TypeError('That is not a valid api format: use "chat_completions" or "responses".');
   }
 
-  return {
-    url: entry.url as string,
-    apiKey: (entry.apiKey as string | null | undefined) ?? null,
-    apiFormat,
-    organization: (entry.organization as string | null | undefined) ?? null,
-    project: (entry.project as string | null | undefined) ?? null,
-  };
+  return value;
 }
 
 /**
@@ -170,33 +181,21 @@ function assertCompatibleUrl(url: unknown): asserts url is string {
 function compatibleConfig(entry: ValidEntry, perCall: Record<string, unknown>): OpenAIConfig {
   let url = entry.url;
   let inherit = true;
+  const perCallUrl = perCall.url;
 
-  if (perCall.url !== undefined) {
-    assertCompatibleUrl(perCall.url);
-    url = perCall.url;
+  if (perCallUrl !== undefined) {
+    assertCompatibleUrl(perCallUrl);
+    url = perCallUrl;
     inherit = url === entry.url || sameEndpoint(url, entry.url);
   }
 
-  const credential = (key: (typeof CREDENTIAL_KEYS)[number]): string | null => {
+  const credential = (key: CredentialKey): string | null => {
     const value = perCall[key];
-    if (value !== undefined) {
-      if (value !== null && typeof value !== 'string') {
-        throw new TypeError('That is not a valid provider entry: apiKey, organization and project must be strings or null.');
-      }
 
-      return value;
-    }
-
-    return inherit ? entry[key] : null;
+    return value !== undefined ? credentialValue(value) : inherit ? entry[key] : null;
   };
 
-  let apiFormat = entry.apiFormat;
-  if (perCall.apiFormat !== undefined && perCall.apiFormat !== null) {
-    if (typeof perCall.apiFormat !== 'string' || !API_FORMATS.includes(perCall.apiFormat)) {
-      throw new TypeError('That is not a valid api format: use "chat_completions" or "responses".');
-    }
-    apiFormat = perCall.apiFormat;
-  }
+  const apiFormat = apiFormatValue(perCall.apiFormat) ?? entry.apiFormat;
 
   const config: OpenAIConfig = {
     ignoreEnvironment: true,

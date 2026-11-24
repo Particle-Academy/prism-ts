@@ -310,6 +310,23 @@ describe('entry validation is all-or-nothing', () => {
     ]);
   });
 
+  it('keeps the url it checked, even from an entry whose url changes on each read', async () => {
+    const name = unique();
+    let reads = 0;
+    const shifty = {
+      driver: 'openai-compatible',
+      get url(): string { reads += 1; return reads === 1 ? 'https://llm.example.test/v1' : 'file:///etc/passwd'; },
+      apiKey: ENTRY_KEY,
+    } as CompatibleProviderEntry;
+
+    configureProviders({ [name]: shifty });
+    fake.reply(jsonReply(OK));
+    await ask(name);
+
+    expect(reads).toBe(1);
+    expect(fake.sent[0]?.url).toBe('https://llm.example.test/v1/chat/completions');
+  });
+
   it('never puts the url or the key in a refusal message', () => {
     const secretUrl = 'file:///home/someone/sk-test-in-url';
     try {

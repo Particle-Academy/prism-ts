@@ -117,11 +117,16 @@ export class ChatCompletionsStreamMapper {
     }
 
     if (readArray(delta.tool_calls).length > 0) {
-      // As the reference does: a chunk carrying tool-call fragments is read
-      // for those alone.
       this.#accumulateToolCalls(delta);
 
-      return events;
+      // A chunk carrying fragments is read for those alone, as the reference
+      // does -- UNLESS it also finishes the turn. Some servers put the last
+      // fragment and `finish_reason: "tool_calls"` in one chunk; returning
+      // here would drop every call and end the stream as a plain Stop. The
+      // reference has that defect; this port does not copy it.
+      if (rawFinish === null || rawFinish === undefined) {
+        return events;
+      }
     }
 
     const finishReason = mapChatFinishReason(rawFinish);
