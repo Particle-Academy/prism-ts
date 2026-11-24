@@ -101,6 +101,73 @@ const REFUSED = [
   'http://[64:ff9b::a9fe:a9fe]/',
 ];
 
+const HOST_MESSAGE =
+  'A per-call provider url host may hold only letters, digits, hyphens and dots, or an IPv6 address in brackets.';
+
+/*
+ * A host is judged as written. Some HTTP clients percent-decode a host before
+ * they connect, so the guard never decodes: an escape, or any character a
+ * hostname or address literal may not hold, is refused, and so is a backslash
+ * in the authority, which URL parsers split in different places. WHATWG URL
+ * decodes the host, so these are checked against the text, not `hostname`.
+ */
+const ESCAPED_OR_ILLEGAL: ReadonlyArray<readonly [string, string]> = [
+  ['http://loc%61lhost:8080/admin', 'loc%61lhost'],
+  ['http://LOC%41LHOST/v1', 'loc%41lhost'],
+  ['http://localhost%2e/v1', 'localhost%2e'],
+  ['http://127.0.0.1%2e/v1', '127.0.0.1'],
+  ['http://127.0.0.1%00.evil.com/v1', '%00'],
+  ['http://%31%32%37.0.0.1/v1', '%31'],
+  ['http://169.254.169.254%2e/latest/meta-data/', '169.254'],
+  ['http://metadata.google.internal%2e/x', 'metadata.google'],
+  ['https://gateway%2eexample/v1', 'gateway'],
+  ['https://gate_way.example/v1', 'gate_way'],
+  ['http://127.0.0.1\\@gateway.example/v1', '127.0.0.1'],
+  ['http://gateway.example\\@127.0.0.1/v1', 'gateway.example'],
+  ['http://[fe80::1%25eth0]/v1', 'eth0'],
+  ['http://[::%31]/v1', '%31'],
+];
+
+describe('a per-call host with an escape or a character no host may hold', () => {
+  it.each(ESCAPED_OR_ILLEGAL)('refuses %s before any request', async (url, fragment) => {
+    const error = await ask('openai', { url });
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('private_address_refused');
+    expect((error as PrismError).message.toLowerCase()).not.toContain(fragment.toLowerCase());
+    expect(fake.sent).toHaveLength(0);
+  });
+
+  it.each(['http://127.0.0.1./v1', 'http://0x7f000001./v1', 'http://localhost../v1', 'http://169.254.169.254./latest'])(
+    'reads the trailing dot in %s as the host the client contacts',
+    async (url) => {
+      expectRefused(await ask('openai', { url }), 'private_address_refused', url);
+    },
+  );
+
+  it.each([
+    ['https://gateway.example./v1', 'https://gateway.example./v1'],
+    ['https://bücher.example/v1', 'https://b'],
+  ])('dispatches to the public host %s', async (url, prefix) => {
+    replyOnce();
+    await ask('openai', { url });
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]?.url.startsWith(prefix)).toBe(true);
+  });
+
+  it('refuses an empty host as a scheme error rather than reading past it', async () => {
+    const error = await ask('openai', { url: 'http:///127.0.0.1/v1' });
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('scheme_not_allowed');
+    expect((error as PrismError).message).toBe(SCHEME_MESSAGE);
+    expect(fake.sent).toHaveLength(0);
+  });
+
+  it('names the host rule in the message', async () => {
+    const error = await ask('openai', { url: 'https://gateway%2eexample/v1' });
+    expect((error as PrismError).message).toBe(HOST_MESSAGE);
+  });
+});
+
 describe('a per-call url on a built-in provider', () => {
   it.each(REFUSED)('refuses %s before any request', async (url) => {
     expectRefused(await ask('openai', { url }), 'private_address_refused', url);

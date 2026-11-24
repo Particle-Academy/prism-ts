@@ -182,16 +182,26 @@ compatible and `registerProvider()` providers alike, and refused with
 `PrismUrlRefused`:
 
 - `private_address_refused` for a loopback, RFC 1918, link-local, CGNAT,
-  unique-local, IPv4-mapped, documentation, multicast or reserved address in
-  any spelling a resolver accepts (`127.1`, `2130706433`, `0x7f000001`,
-  `0177.0.0.1`, `[::ffff:127.0.0.1]`, an address inside a NAT64 or 6to4 one),
-  and for `localhost`, `*.localhost`, `localhost.localdomain`, `ip6-localhost`,
-  `ip6-loopback`, `metadata`, `metadata.google.internal` and `instance-data`;
+  unique-local, IPv4-mapped, documentation, multicast or reserved address
+  written as a literal, including the shortened and numeric forms (`127.1`,
+  `2130706433`, `0x7f000001`, `0177.0.0.1`, `[::ffff:127.0.0.1]`, an address
+  inside a NAT64 or 6to4 one), and for `localhost`, `*.localhost`,
+  `localhost.localdomain`, `ip6-localhost`, `ip6-loopback`, `metadata`,
+  `metadata.google.internal` and `instance-data`. Trailing dots are ignored, so
+  `localhost.` is refused like `localhost`;
+- `private_address_refused` also for a host, as written, that holds anything
+  other than letters, digits, `-` and `.` (or an IPv6 address in brackets). A
+  percent escape is refused, not decoded, and so is a backslash before the
+  path;
 - `scheme_not_allowed` for anything that is not an absolute `http://` or
   `https://` url with a host.
 
-The message never contains the url or the address. The check needs no network:
-a hostname that RESOLVES to a private address is not caught by it.
+The message never contains the url or the address. **The check does not resolve
+DNS**: a public hostname that resolves to a private address (a wildcard-DNS name
+such as `127.0.0.1.nip.io`, for example) is not refused. It stops mistakes and
+literal addresses, not someone who can choose the hostname. If a per-call url
+can come from a user, allow only known hosts or restrict outbound traffic at the
+network level as well.
 
 A per-call url that is the configured endpoint itself (the same endpoint by the
 rule above) is not checked. To let per-call urls reach private addresses, opt out

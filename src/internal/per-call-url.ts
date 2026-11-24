@@ -10,14 +10,28 @@ import { isPublicAddress } from './public-url.js';
  * `PerCallUrl::assert()` and prism-py's `assert_per_call_url()`.
  *
  * Synchronous and offline: no DNS. A hostname that RESOLVES to a private
- * address is not caught; only an address literal (in every form a resolver
- * accepts) or a well-known local / metadata name is. The messages never name
+ * address is not caught; only an address literal (in the forms a resolver
+ * reads) or a well-known local / metadata name is. The messages never name
  * the url, the host or the address.
+ *
+ * The host is judged AS WRITTEN, before WHATWG URL decodes it, because the
+ * other two languages' clients do not decode it and one rule must hold in
+ * all three. A host holding anything but letters, digits, `-` and `.` (and,
+ * inside brackets, an IPv6 literal's `:`) is refused, `%` included, and so is
+ * a backslash anywhere in the authority, which URL parsers split in different
+ * places. Never decoded and re-checked.
  */
 
 const PRIVATE_MESSAGE =
   'A per-call provider url may not point at a loopback, private, link-local or metadata address. Allow it in the provider config with allowPrivatePerCallUrl.';
 const SCHEME_MESSAGE = 'A per-call provider url must be an absolute http or https url.';
+const HOST_MESSAGE =
+  'A per-call provider url host may hold only letters, digits, hyphens and dots, or an IPv6 address in brackets.';
+
+/** As written: a name (non-ASCII is left to IDNA), or a bracketed IPv6 literal. */
+const WRITTEN_HOST = /^(?:[A-Za-z0-9.\-\u0080-\u{10FFFF}]+|\[[A-Za-z0-9.:-]+\])$/u;
+/** After IDNA, lowercasing and trailing dots: ASCII only. */
+const CANONICAL_HOST = /^[a-z0-9.:-]+$/;
 
 const MAX_IPV4 = 4294967295;
 
@@ -34,6 +48,31 @@ function schemeRefusal(): PrismUrlRefused {
   return new PrismUrlRefused('scheme_not_allowed', SCHEME_MESSAGE);
 }
 
+/** The private-address code: a host that cannot be read safely is refused under the rule it might evade. */
+function hostRefusal(): PrismUrlRefused {
+  return new PrismUrlRefused('private_address_refused', HOST_MESSAGE);
+}
+
+/**
+ * The host exactly as written. The authority runs from after `//` to the
+ * first `/`, `?` or `#`; the host follows its last `@` and ends at the port's
+ * `:` (or, when bracketed, at the first `]`). Null when the authority holds a
+ * backslash. Nothing is decoded.
+ */
+function writtenHost(url: string): string | null {
+  const rest = url.slice(url.indexOf('//') + 2);
+  const cut = rest.search(/[/?#]/);
+  const authority = cut === -1 ? rest : rest.slice(0, cut);
+  if (authority.includes('\\')) return null;
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
+  if (hostPort.startsWith('[')) {
+    const end = hostPort.indexOf(']');
+    return end === -1 ? hostPort : hostPort.slice(0, end + 1);
+  }
+  const colon = hostPort.indexOf(':');
+  return colon === -1 ? hostPort : hostPort.slice(0, colon);
+}
+
 /**
  * @throws PrismUrlRefused `scheme_not_allowed` for anything that is not an
  *   absolute http(s) url with a host; `private_address_refused` for a refused
@@ -43,7 +82,12 @@ export function assertPerCallUrl(url: string): void {
   // 1. A literal http:// or https:// prefix, case-insensitively.
   if (!/^https?:\/\//i.test(url)) throw schemeRefusal();
 
-  // 2. The parser's host, so userinfo (`http://evil@127.0.0.1`) is ignored.
+  // 2. The host as written, before any parser decodes it.
+  const written = writtenHost(url);
+  if (written === '') throw schemeRefusal();
+  if (written === null || !WRITTEN_HOST.test(written)) throw hostRefusal();
+
+  // 3. The parser's host, so userinfo (`http://evil@127.0.0.1`) is ignored.
   let hostname: string;
   try {
     hostname = new URL(url).hostname;
@@ -52,7 +96,7 @@ export function assertPerCallUrl(url: string): void {
   }
   if (hostname === '') throw schemeRefusal();
 
-  // 3. One pair of brackets off; WHATWG URL already gives ASCII (punycode),
+  // 4. One pair of brackets off; WHATWG URL already gives ASCII (punycode),
   // so anything non-ASCII is a parser surprise and refused. ASCII-lowercase,
   // then every trailing dot off.
   let host = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
@@ -63,24 +107,25 @@ export function assertPerCallUrl(url: string): void {
   while (end > 0 && host.charCodeAt(end - 1) === 46) end -= 1;
   host = host.slice(0, end);
   if (host === '') throw schemeRefusal();
+  if (!CANONICAL_HOST.test(host)) throw hostRefusal();
 
-  // 4. An IPv6 literal.
+  // 5. An IPv6 literal.
   if (host.includes(':')) {
     if (host.includes('%') || isIP(host) !== 6 || !isPublicAddress(host)) throw privateRefusal();
     return;
   }
 
-  // 5. IPv4 in every form a resolver accepts.
+  // 6. IPv4 in every form a resolver accepts.
   const labels = host.split('.');
   if (/^(0x[0-9a-f]*|[0-9]+)$/i.test(labels[labels.length - 1] ?? '')) {
     if (!isPublicAddress(ipv4Address(labels))) throw privateRefusal();
     return;
   }
 
-  // 6. Well-known local and metadata names.
+  // 7. Well-known local and metadata names.
   if (LOCAL_NAMES.has(host) || host.endsWith('.localhost')) throw privateRefusal();
 
-  // 7. Any other name is allowed; resolving it would need the network.
+  // 8. Any other name is allowed; resolving it would need the network.
 }
 
 /** The dotted quad an IPv4 attempt names, or a refusal when it cannot be read. */
