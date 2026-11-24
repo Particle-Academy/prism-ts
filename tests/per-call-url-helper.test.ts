@@ -93,15 +93,15 @@ describe('assertPerCallUrl, invisible and deviation characters', () => {
 
 describe('assertPerCallUrl, non-ASCII hosts', () => {
   it.each([
-    'https://bücher.example/v1', 'http://１２７.０.０.１/', 'http://loc％61lhost/',
-    'https://مثال.3com.example/v1', 'https://bücher.ab--cd.example/v1',
+    'https://b\u00FCcher.example/v1', 'http://\uFF11\uFF12\uFF17.\uFF10.\uFF10.\uFF11/', 'http://loc\uFF0561lhost/',
+    'https://\u0645\u062B\u0627\u0644.3com.example/v1', 'https://b\u00FCcher.ab--cd.example/v1',
   ])('refuses %s with its own code', (url) => {
     expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'non_ascii_host_use_punycode' }) as Error);
   });
 
   it.each([
     'https://xn--bcher-kva.example/v1', 'https://xn--strae-oqa.de/v1', 'https://xn--mgbh0fb.3com.example/v1',
-    'https://xn--bcher-kva.ab--cd.example/v1', 'https://bü@gateway.example/v1',
+    'https://xn--bcher-kva.ab--cd.example/v1', 'https://b\u00FC@gateway.example/v1',
   ])('allows %s', (url) => {
     expect(() => assertPerCallUrl(url)).not.toThrow();
   });

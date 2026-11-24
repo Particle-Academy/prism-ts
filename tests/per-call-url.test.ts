@@ -378,11 +378,11 @@ const PUNYCODE_MESSAGE = 'A per-call provider url host must be ASCII. Give an in
  */
 describe('a non-ASCII per-call host', () => {
   it.each([
-    ['https://bücher.example/v1', 'bücher'],
-    ['https://пример.рф/v1', 'рф'],
-    ['https://مثال.3com.example/v1', '3com'],
-    ['https://bücher.ab--cd.example/v1', 'ab--cd'],
-    ['http://１２７.０.０.１/v1', '１'],
+    ['https://b\u00FCcher.example/v1', 'b\u00FCcher'],
+    ['https://\u043F\u0440\u0438\u043C\u0435\u0440.\u0440\u0444/v1', '\u0440\u0444'],
+    ['https://\u0645\u062B\u0627\u0644.3com.example/v1', '3com'],
+    ['https://b\u00FCcher.ab--cd.example/v1', 'ab--cd'],
+    ['http://\uFF11\uFF12\uFF17.\uFF10.\uFF10.\uFF11/v1', '\uFF11'],
   ])('refuses %s with its own code before any request', async (url, fragment) => {
     const error = await ask('openai', { url });
     expect(error).toBeInstanceOf(PrismError);
@@ -394,7 +394,7 @@ describe('a non-ASCII per-call host', () => {
 });
 
 describe('a capital sharp s in a per-call host', () => {
-  it.each(['http://locaẞlhost/v1', 'http://127.0.0.1ẞ/v1', 'https://gatewayẞ.example/v1'])(
+  it.each(['http://loca\u1E9Elhost/v1', 'http://127.0.0.1\u1E9E/v1', 'https://gateway\u1E9E.example/v1'])(
     'refuses %s with the host rule before any request',
     async (url) => {
       const error = await ask('openai', { url });
