@@ -461,3 +461,69 @@ describe('argument keys that could bind by position', () => {
     });
   }
 });
+
+describe('the stored record of a call whose arguments are unusable', () => {
+  const RAW = '{"kept-out": 5';
+
+  it('keeps the raw text out of a response the provider returned', async () => {
+    const body: JsonObject = { id: 'r', model: 'm', status: 'completed', output: [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'probe', arguments: RAW }], usage: { input_tokens: 1, output_tokens: 1 } };
+    const transport = vi.fn<HttpTransport>(() => Promise.resolve({ status: 200, headers: {}, body, rawBody: JSON.stringify(body) }));
+    const response = await Prism.text().using('openai', 'm', { apiKey: 'k', transport }).withPrompt('p').asText();
+
+    // `raw` is the provider's body, kept as received; every record of the call is not.
+    const { raw: _raw, steps, ...record } = response.toObject();
+    const stepRecords = (steps as JsonObject[]).map(({ raw: _stepRaw, ...step }) => step);
+
+    expect(JSON.stringify([record, stepRecords])).not.toContain('kept-out');
+    expect((response.toObject().tool_calls as JsonObject[])[0]).toEqual({
+      id: 'fc_1', name: 'probe', arguments: ']', arguments_malformed: true, result_id: 'call_1', reasoning_id: null, reasoning_summary: null,
+    });
+  });
+
+  it.each([
+    ['truncated JSON', RAW],
+    ['a number', '5'],
+    ['a list', '[1,2]'],
+    ['an integer key', '{"0":"x"}'],
+  ])('stores %s as the reference does, and reads it back as unusable', (_name, args) => {
+    const record = new AssistantMessage('', [new ToolCall('c', 'probe', args, 'r')]).toObject();
+
+    expect(JSON.stringify(record.tool_calls)).toBe(
+      '[{"id":"c","name":"probe","arguments":"]","arguments_malformed":true,"result_id":"r","reasoning_id":null,"reasoning_summary":null}]',
+    );
+
+    const call = AssistantMessage.fromObject(JSON.parse(JSON.stringify(record)) as JsonObject).toolCalls[0];
+
+    expect(call?.hasMalformedArguments()).toBe(true);
+    expect(JSON.stringify(call?.toObject())).toBe(JSON.stringify((record.tool_calls as JsonObject[])[0]));
+  });
+
+  it('stores a decoded map no request could carry as unusable', () => {
+    const deep: JsonObject = {};
+    let cursor = deep;
+    for (let i = 0; i < 501; i++) {
+      const next: JsonObject = {};
+      cursor.a = next;
+      cursor = next;
+    }
+
+    const record = new ToolCall('c', 'probe', deep).toObject();
+
+    expect(record.arguments).toBe(']');
+    expect(record.arguments_malformed).toBe(true);
+  });
+
+  it('reads a record marked unusable as unusable, whatever arguments it carries', () => {
+    const call = ToolCall.fromObject({ id: 'c', name: 'probe', arguments: { city: 'Paris' }, arguments_malformed: true });
+
+    expect(call.hasMalformedArguments()).toBe(true);
+    expect(call.toObject().arguments).toBe(']');
+  });
+
+  it('stores usable arguments as before, with no flag', () => {
+    expect(new ToolCall('c', 'probe', '{"city":"Paris"}').toObject()).toEqual({
+      id: 'c', name: 'probe', arguments: '{"city":"Paris"}', result_id: null, reasoning_id: null, reasoning_summary: null,
+    });
+    expect(new ToolCall('c', 'probe', {}).toObject()).not.toHaveProperty('arguments_malformed');
+  });
+});
