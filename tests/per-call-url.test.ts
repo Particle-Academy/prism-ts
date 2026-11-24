@@ -155,8 +155,11 @@ describe('a per-call host with an escape or a character no host may hold', () =>
   });
 
   it('refuses an empty host as a scheme error rather than reading past it', async () => {
-    const url = 'http:///127.0.0.1/v1';
-    expectRefused(await ask('openai', { url }), 'scheme_not_allowed', url);
+    const error = await ask('openai', { url: 'http:///127.0.0.1/v1' });
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('scheme_not_allowed');
+    expect((error as PrismError).message).toBe(SCHEME_MESSAGE);
+    expect(fake.sent).toHaveLength(0);
   });
 
   it('names the host rule in the message', async () => {

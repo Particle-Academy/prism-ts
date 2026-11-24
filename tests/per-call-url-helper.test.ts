@@ -22,4 +22,12 @@ describe('assertPerCallUrl', () => {
   it.each(['//127.0.0.1/', 'http:127.0.0.1', 'file:///etc/passwd', 'http://', 'http://08/'])('refuses %s as a scheme error', (url) => {
     expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'scheme_not_allowed' }) as Error);
   });
+
+  it('does not resolve names: a public name that points at loopback is accepted (known limit)', () => {
+    expect(() => assertPerCallUrl('http://127.0.0.1.nip.io/v1')).not.toThrow();
+  });
+
+  it.each(['http://loc%61lhost/', 'http://gate_way.example/', 'http://a.example\\@b.example/'])('refuses %s as written', (url) => {
+    expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'private_address_refused' }) as Error);
+  });
 });
