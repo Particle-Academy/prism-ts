@@ -345,8 +345,8 @@ describe('a per-call url naming a hosts-file name or an IPv4-carrying IPv6 form'
 
 describe('a per-call host with a format, invisible or deviation character', () => {
   it.each([
-    'http://loca­lhost/v1', 'http://169.254.169.254⁠/latest', 'http://loca᠆lhost/v1',
-    'http://localhost️/v1', 'https://faß.example/v1', 'https://λογος.example/v1',
+    'http://loca\u00ADlhost/v1', 'http://169.254.169.254\u2060/latest', 'http://loca\u1806lhost/v1',
+    'http://localhost\uFE0F/v1', 'https://fa\u00DF.example/v1', 'https://\u03BB\u03BF\u03B3\u03BF\u03C2.example/v1',
   ])('refuses %s with the host rule before any request', async (url) => {
     const error = await ask('openai', { url });
     expect(error).toBeInstanceOf(PrismError);
@@ -355,7 +355,7 @@ describe('a per-call host with a format, invisible or deviation character', () =
     expect(fake.sent).toHaveLength(0);
   });
 
-  it.each(['http://loca‍lhost/v1', 'http://127.0.0.1‍/v1', 'http://127.0.0.1‌/v1'])(
+  it.each(['http://loca\u200Dlhost/v1', 'http://127.0.0.1\u200D/v1', 'http://127.0.0.1\u200C/v1'])(
     'refuses the zero-width joiner in %s before any request',
     async (url) => {
       expect(await ask('openai', { url })).toBeInstanceOf(Error);
