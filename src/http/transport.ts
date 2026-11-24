@@ -6,6 +6,7 @@
  * an application wrap every call in its own retry, proxy or instrumentation.
  */
 
+import { PrismUrlRefused } from '../errors.js';
 import { foldHeaderName } from './header-names.js';
 import { abortable, DEFAULT_STREAM_IDLE_TIMEOUT, RequestDeadline, timeoutSeconds, withRequestDeadline } from './deadline.js';
 
@@ -34,13 +35,12 @@ export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>;
 /** The default transport: `fetch`, available as a global from Node 18. */
 export const fetchTransport: HttpTransport = async (request: HttpRequest): Promise<HttpResponse> => {
   return withRequestDeadline(request.clientOptions, async (signal) => {
-  const response = await abortable(fetch(request.url, {
+  const response = await fetchSameOrigin(request.url, {
     method: request.method,
     headers: { ...request.headers },
     body: request.body,
     ...request.clientOptions,
-    signal,
-  }), signal);
+  }, signal);
 
   const rawBody = await abortable(response.text(), signal);
   const headers: Record<string, string> = {};
@@ -57,6 +57,111 @@ export const fetchTransport: HttpTransport = async (request: HttpRequest): Promi
   };
   });
 };
+
+/** Redirect hops a provider call may take, all on the origin it started on. */
+const MAX_PROVIDER_REDIRECTS = 10;
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Headers that describe a body, dropped with it when a redirect turns the request into a GET. */
+const BODY_HEADERS = ['content-type', 'content-length', 'content-encoding', 'content-language', 'content-location'];
+
+/**
+ * `fetch` for a provider call: redirects are followed only while the scheme,
+ * host and port stay the same as the first request's.
+ *
+ * Provider requests carry credentials in headers, and `fetch` keeps most
+ * headers when it follows a redirect to another host. So redirects are handled
+ * here, with `redirect: 'manual'` set after the caller's client options so they
+ * cannot turn it back on. A redirect to any other origin is refused before a
+ * second request is made. Same-origin hops keep the method, body and headers,
+ * except that a 303, or a 301/302 answering a POST, becomes a GET without a body,
+ * as `fetch` itself would do.
+ */
+async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
+  const origin = originOf(url);
+  let current = url;
+  let method = (init.method ?? 'GET').toUpperCase();
+  let headers: RequestInit['headers'] = init.headers;
+  let body: RequestInit['body'] = init.body;
+
+  for (let hop = 0; ; hop++) {
+    signal.throwIfAborted();
+    const hopInit: RequestInit = { ...init, method, redirect: 'manual', signal };
+    delete hopInit.headers;
+    delete hopInit.body;
+
+    if (headers !== undefined) {
+      hopInit.headers = headers;
+    }
+
+    // A GET or HEAD cannot carry a body; `fetch` refuses one, even when empty.
+    if (body !== undefined && body !== null && method !== 'GET' && method !== 'HEAD') {
+      hopInit.body = body;
+    }
+
+    const response = await abortable(fetch(current, hopInit), signal);
+
+    const location = response.headers.get('location');
+
+    if (!REDIRECT_STATUSES.has(response.status) || location === null || location === '') {
+      return response;
+    }
+
+    // The redirect's own body is never read; release the connection.
+    await abortable(response.body?.cancel() ?? Promise.resolve(), signal);
+
+    let next: URL;
+
+    try {
+      next = new URL(location, current);
+    } catch {
+      throw new PrismUrlRefused('redirect_refused', `The provider answered ${response.status} with a Location that is not a valid URL; it was not followed.`);
+    }
+
+    if (origin === null || originOf(next.href) !== origin) {
+      throw new PrismUrlRefused('redirect_refused', `The provider answered ${response.status} with a redirect to a different origin; it was not followed.`);
+    }
+
+    if (hop >= MAX_PROVIDER_REDIRECTS) {
+      throw new PrismUrlRefused('too_many_redirects', `The provider redirected more than ${MAX_PROVIDER_REDIRECTS} times.`);
+    }
+
+    if ((response.status === 303 && method !== 'GET' && method !== 'HEAD')
+      || ((response.status === 301 || response.status === 302) && method === 'POST')) {
+      method = 'GET';
+      body = undefined;
+      const remaining = new Headers(headers);
+
+      for (const name of BODY_HEADERS) {
+        remaining.delete(name);
+      }
+
+      headers = remaining;
+    }
+
+    current = next.href;
+  }
+}
+
+/** `scheme://host:port` with the default port made explicit, or null for anything but http(s). */
+function originOf(url: string): string | null {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return null;
+  }
+
+  const port = parsed.port === '' ? (parsed.protocol === 'https:' ? '443' : '80') : parsed.port;
+
+  return `${parsed.protocol}//${parsed.hostname.toLowerCase()}:${port}`;
+}
 
 function parseJson(body: string): unknown {
   if (body === '') {
@@ -100,13 +205,12 @@ export const fetchStreamTransport: HttpStreamTransport = async (
   const deadline = new RequestDeadline(timeoutSeconds(request.clientOptions.timeout), request.clientOptions.signal as AbortSignal | null | undefined);
   try {
   deadline.signal.throwIfAborted();
-  const response = await abortable(fetch(request.url, {
+  const response = await fetchSameOrigin(request.url, {
     method: request.method,
     headers: { ...request.headers },
     body: request.body,
     ...request.clientOptions,
-    signal: deadline.signal,
-  }), deadline.signal);
+  }, deadline.signal);
   deadline.clear();
 
   const headers: Record<string, string> = {};
@@ -260,13 +364,12 @@ export const fetchBinaryTransport: HttpBinaryTransport = async (request): Promis
   }
 
   return withRequestDeadline(request.clientOptions, async (signal) => {
-  const response = await abortable(fetch(request.url, {
+  const response = await fetchSameOrigin(request.url, {
     method: request.method,
     headers,
     body,
     ...request.clientOptions,
-    signal,
-  }), signal);
+  }, signal);
 
   const responseHeaders: Record<string, string> = {};
 

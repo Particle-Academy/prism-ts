@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The default transports follow a redirect only when the scheme, host and port are unchanged. A redirect to any other origin is not followed and fails with `PrismUrlRefused` (`redirect_refused`); nothing is sent to the second server. Same-origin redirects keep working, capped at 10 hops (`too_many_redirects`); a 303, or a 301/302 answering a POST, becomes a GET without a body. `withClientOptions({ redirect })` no longer changes this.
+- GET requests on the default binary transport (OpenAI file metadata, download and list, batch retrieve, list and results) no longer fail with "Request with GET/HEAD method cannot have body".
 - `configureProviders()` registers named OpenAI-compatible providers (`driver: 'openai-compatible'`). Each sends only its own `apiKey`, `organization` and `project` and reads nothing from the environment; an entry with no key sends no `Authorization` header. A per-call `url` for a different endpoint drops the entry's credentials. The url must be an absolute http or https url (private addresses allowed). Names follow `registerProvider()`'s allow-list and collision rules, and every entry is checked before any is registered (G-321 A).
 - The OpenAI provider supports `apiFormat: 'chat_completions'` for text, structured and stream, posting the reference's request bodies to `<url>/chat/completions`. Tool-call replies are refused with `tool_loop_not_supported` without running the tool, unusable tool arguments follow the existing rules, and a document, audio or video part is refused with `unsupported_media` (G-321 D).
 - `OpenAIConfig.ignoreEnvironment` builds an OpenAI provider from the passed values only.
