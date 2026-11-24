@@ -17,6 +17,27 @@ function environmentValue(name: string, fallback: unknown): unknown {
   return quoted?.[2] ?? value;
 }
 
+/**
+ * An opt-in flag from the environment: ON only when Laravel's env() reading
+ * of the value is boolean true (`true` / `(true)`, case-insensitively).
+ * `1`, `yes` and every other text are off.
+ */
+export function environmentFlag(name: string): boolean {
+  return environmentValue(name, false) === true;
+}
+
+/**
+ * The url the environment configures (or the default), or null when the
+ * environment value is unusable: an unusable value configures no endpoint.
+ */
+export function environmentUrl(name: string, fallback: string, nullFallback?: string): string | null {
+  try {
+    return configuredString(undefined, name, fallback, nullFallback);
+  } catch {
+    return null;
+  }
+}
+
 export function configuredString(value: unknown, name: string, fallback: string, nullFallback?: string): string {
   const resolved = value === undefined ? environmentValue(name, fallback) : value;
   if (resolved === null && nullFallback !== undefined) return nullFallback;

@@ -101,6 +101,11 @@ beforeEach(() => {
   for (const name of ['OPENAI_API_KEY', 'OPENAI_ORGANIZATION', 'OPENAI_PROJECT', 'OPENAI_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_URL', 'MISTRAL_API_KEY', 'MISTRAL_URL']) {
     vi.stubEnv(name, undefined);
   }
+  // The loopback servers are reached through a per-call url, which is refused
+  // for a loopback address unless the provider's configuration opts out.
+  for (const name of ['OPENAI_ALLOW_PRIVATE_PER_CALL_URL', 'ANTHROPIC_ALLOW_PRIVATE_PER_CALL_URL', 'MISTRAL_ALLOW_PRIVATE_PER_CALL_URL']) {
+    vi.stubEnv(name, 'true');
+  }
   vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (!isLoopback(url)) {
