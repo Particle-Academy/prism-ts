@@ -31,3 +31,60 @@ describe('assertPerCallUrl', () => {
     expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'private_address_refused' }) as Error);
   });
 });
+
+const HOST_MESSAGE =
+  'A per-call provider url host may hold only letters, digits, hyphens and dots, or an IPv6 address in brackets.';
+
+describe('assertPerCallUrl, hosts-file names and IPv4-carrying IPv6 forms', () => {
+  it.each([
+    'http://localhost4/', 'http://localhost4.localdomain4/', 'http://LOCALHOST6./', 'http://localhost6.localdomain6/',
+    'http://ipv6-localhost/', 'http://ipv6-loopback/', 'http://ipv6-localnet/', 'http://ipv6-allhosts/',
+    'http://ip6-localnet/', 'http://ip6-mcastprefix/', 'http://ip6-allnodes/', 'http://ip6-allrouters/',
+    'http://broadcasthost/', 'http://box.localhost.localdomain/',
+    'http://[::ffff:0:127.0.0.1]/', 'http://[::ffff:0:7f00:1]/', 'http://[::ffff:0:a9fe:a9fe]/', 'http://[::ffff:0:8.8.8.8]/',
+    'http://[2001:4860::5efe:7f00:1]/', 'http://[2001:4860::200:5efe:a9fe:a9fe]/', 'http://[2001:4860::5efe:10.0.0.5]/',
+  ])('refuses %s', (url) => {
+    expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'private_address_refused' }) as Error);
+  });
+
+  it.each(['http://[2001:4860::5efe:808:808]/v1', 'https://localhost4.example/v1', 'https://xlocalhost6/v1'])('allows %s', (url) => {
+    expect(() => assertPerCallUrl(url)).not.toThrow();
+  });
+});
+
+/*
+ * The guard on its own refuses a format, invisible or UTS46 deviation
+ * character anywhere in the authority; no other check is relied on.
+ */
+describe('assertPerCallUrl, invisible and deviation characters', () => {
+  it.each([
+    ['joiner inside localhost', 'http://loca\u200Dlhost/'],
+    ['non-joiner inside localhost', 'http://loca\u200Clhost/'],
+    ['joiner after localhost', 'http://localhost\u200D/'],
+    ['joiner before localhost', 'http://\u200Dlocalhost/'],
+    ['joiner after loopback', 'http://127.0.0.1\u200D/'],
+    ['joiner inside loopback', 'http://127.0.0.\u200D1/'],
+    ['non-joiner after loopback', 'http://127.0.0.1\u200C/'],
+    ['joiner after metadata ip', 'http://169.254.169.254\u200D/'],
+    ['joiner after private ip', 'http://10.0.0.5\u200D/'],
+    ['joiner after metadata name', 'http://metadata.google.internal\u200D/'],
+    ['joiner in a public name', 'https://gate\u200Dway.example/v1'],
+    ['soft hyphen', 'http://loca\u00ADlhost/'],
+    ['word joiner', 'http://localhost\u2060/'],
+    ['mongolian todo soft hyphen', 'http://loca\u1806lhost/'],
+    ['mongolian vowel separator', 'http://localhost\u180E/'],
+    ['variation selector', 'http://localhost\uFE0F/'],
+    ['byte order mark', 'http://127.0.0.1\uFEFF/'],
+    ['left-to-right mark', 'http://localhost\u200E/'],
+    ['hangul filler', 'http://localhost\u3164/'],
+    ['tag character', 'http://localhost\u{E0001}/'],
+    ['no-break space', 'http://localhost\u00A0/'],
+    ['sharp s (deviation)', 'https://fa\u00DF.example/v1'],
+    ['final sigma (deviation)', 'https://\u03BB\u03BF\u03B3\u03BF\u03C2.example/v1'],
+    ['joiner in userinfo', 'http://user\u200D@gateway.example/v1'],
+  ])('refuses the %s', (_label, url) => {
+    expect(() => assertPerCallUrl(url)).toThrowError(
+      expect.objectContaining({ code: 'private_address_refused', message: HOST_MESSAGE }) as Error,
+    );
+  });
+});
