@@ -166,11 +166,19 @@ export class ToolCall {
     return decoded;
   }
 
+  /**
+   * The stored record. Unusable arguments are never kept: the record holds a
+   * fixed text that is refused if it is ever read back into a call, and says
+   * so with `arguments_malformed`, as the reference does.
+   */
   toObject(): JsonObject {
+    const malformed = this.hasMalformedArguments();
+
     return {
       id: this.id,
       name: this.name,
-      arguments: this.arguments,
+      arguments: malformed ? UNUSABLE_ARGUMENTS_RECORD : this.arguments,
+      ...(malformed ? { arguments_malformed: true } : {}),
       result_id: this.resultId,
       reasoning_id: this.reasoningId,
       reasoning_summary: this.reasoningSummary,
@@ -178,7 +186,8 @@ export class ToolCall {
   }
 
   static fromObject(object: JsonObject): ToolCall {
-    const args = object.arguments;
+    // A record marked unusable stays unusable, whatever arguments it carries.
+    const args = object.arguments_malformed === true ? UNUSABLE_ARGUMENTS_RECORD : object.arguments;
 
     return new ToolCall(
       typeof object.id === 'string' ? object.id : '',
@@ -197,6 +206,12 @@ export class ToolCall {
  * of 512, so the limit leaves room for the deepest envelope.
  */
 const MAX_ARGUMENT_DEPTH = 500;
+
+/**
+ * What a record holds in place of unusable arguments: text that is refused if
+ * the record is ever read back into a call.
+ */
+const UNUSABLE_ARGUMENTS_RECORD = ']';
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /**
