@@ -58,6 +58,16 @@ export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
   if (address.includes('%') || family === 0) return false;
   if (family === 6) {
+    // ISATAP (RFC 5214) puts an IPv4 address in the low 32 bits behind the
+    // interface identifier 0000:5efe (0200:5efe with the u bit, and the g bit
+    // may be set too), under ANY prefix. On an ISATAP site the packet is
+    // tunnelled to that IPv4 address, so it is judged as well; the prefix is
+    // still judged below.
+    // Checked before NAT64 and 6to4, which return early, so a 6to4 prefix
+    // cannot hide an ISATAP address.
+    const bytes = ipv6Bytes(address);
+    if (((bytes[8] ?? 0) & 0xfc) === 0 && bytes[9] === 0 && bytes[10] === 0x5e && bytes[11] === 0xfe
+      && !isPublicAddress(bytes.slice(12, 16).join('.'))) return false;
     for (const [prefix, bits, offset] of EMBEDDING) {
       const range = new BlockList();
       range.addSubnet(prefix, bits, 'ipv6');
@@ -65,14 +75,6 @@ export function isPublicAddress(address: string): boolean {
         return isPublicAddress(ipv6Bytes(address).slice(offset, offset + 4).join('.'));
       }
     }
-    // ISATAP (RFC 5214) puts an IPv4 address in the low 32 bits behind the
-    // interface identifier 0000:5efe (0200:5efe with the u bit, and the g bit
-    // may be set too), under ANY prefix. On an ISATAP site the packet is
-    // tunnelled to that IPv4 address, so it is judged as well; the prefix is
-    // still judged below.
-    const bytes = ipv6Bytes(address);
-    if (((bytes[8] ?? 0) & 0xfc) === 0 && bytes[9] === 0 && bytes[10] === 0x5e && bytes[11] === 0xfe
-      && !isPublicAddress(bytes.slice(12, 16).join('.'))) return false;
   }
 
   return !(family === 4 ? ipv4.check(address, 'ipv4') : ipv6.check(address, 'ipv6'));

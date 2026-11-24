@@ -131,6 +131,8 @@ export function assertPerCallUrl(url: string): void {
   const written = writtenHost(url);
   if (written === '') throw schemeRefusal();
   if (written === null || !WRITTEN_HOST.test(written)) throw hostRefusal();
+  // An address literal has no trailing dot; only a name does.
+  if (written.endsWith('.]')) throw hostRefusal();
   // A lone surrogate cannot be read as text, so it is refused as well.
   const authority = writtenAuthority(url);
   if (INVISIBLE.test(authority) || /[\uD800-\uDFFF]/u.test(authority)) throw hostRefusal();
