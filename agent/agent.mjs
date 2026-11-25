@@ -175,7 +175,7 @@ export const LANGUAGE = 'ts';
 // OpenAI and fail at the API with an error about the model rather than about
 // the provider — the confusing kind, that sends you looking in the wrong place.
 const PROVIDER = process.env.PRISM_AGENT_PROVIDER ?? 'anthropic';
-const MODEL = process.env.PRISM_AGENT_MODEL ?? 'claude-sonnet-4-5';
+const MODEL = process.env.PRISM_AGENT_MODEL ?? 'claude-sonnet-5-5';
 
 /**
  * The env var this provider reads its key from.

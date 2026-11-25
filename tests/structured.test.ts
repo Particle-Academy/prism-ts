@@ -159,7 +159,7 @@ describe('structured output', () => {
   it('asks Anthropic for its native JSON schema format', async () => {
     const body = {
       id: 'msg_1',
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-5-5',
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: '{"name":"Ada"}' }],
       usage: { input_tokens: 4, output_tokens: 2 },
@@ -172,7 +172,7 @@ describe('structured output', () => {
     };
 
     const response = await Prism.structured()
-      .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', transport })
+      .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', transport })
       .withSchema(SCHEMA)
       .withPrompt('Who?')
       .asStructured();

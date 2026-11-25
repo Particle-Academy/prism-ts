@@ -15,7 +15,7 @@ const OK_BODY = {
   id: 'msg_1',
   type: 'message',
   role: 'assistant',
-  model: 'claude-sonnet-4-5',
+  model: 'claude-sonnet-5-5',
   content: [{ type: 'text', text: 'Hello.' }],
   stop_reason: 'end_turn',
   usage: { input_tokens: 10, output_tokens: 2 },
@@ -51,7 +51,7 @@ describe('Anthropic provider', () => {
     const { transport, calls } = recordingTransport();
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', url: 'https://api.example.test/v1', transport })
+      .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', url: 'https://api.example.test/v1', transport })
       .withPrompt('Hi')
       .withMaxTokens(64)
       .asText();
@@ -68,7 +68,7 @@ describe('Anthropic provider', () => {
     const { transport, calls } = recordingTransport();
 
     await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', transport })
+      .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', transport })
       .withPrompt('Hi')
       .asText();
 
@@ -82,7 +82,7 @@ describe('Anthropic provider', () => {
     // here is a 400, so a default has to be chosen rather than omitted.
     const { transport, calls } = recordingTransport();
 
-    await Prism.text().using('anthropic', 'claude-sonnet-4-5', { transport }).withPrompt('Hi').asText();
+    await Prism.text().using('anthropic', 'claude-sonnet-5-5', { transport }).withPrompt('Hi').asText();
 
     expect(bodyOf(calls[0]).max_tokens).toBe(4096);
   });
@@ -91,7 +91,7 @@ describe('Anthropic provider', () => {
     const { transport, calls } = recordingTransport();
 
     await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withSystemPrompt('Be brief.')
       .withPrompt('Hi')
       .asText();
@@ -107,7 +107,7 @@ describe('Anthropic provider', () => {
     // tool_choice defaults on some models and is rejected outright by others.
     const { transport, calls } = recordingTransport();
 
-    await Prism.text().using('anthropic', 'claude-sonnet-4-5', { transport }).withPrompt('Hi').asText();
+    await Prism.text().using('anthropic', 'claude-sonnet-5-5', { transport }).withPrompt('Hi').asText();
 
     expect(bodyOf(calls[0])).not.toHaveProperty('tools');
   });
@@ -128,7 +128,7 @@ describe('Anthropic provider', () => {
     });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -146,7 +146,7 @@ describe('Anthropic provider', () => {
     });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -175,7 +175,7 @@ describe('Anthropic provider', () => {
     });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -194,7 +194,7 @@ describe('Anthropic provider', () => {
     });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -208,7 +208,7 @@ describe('Anthropic provider', () => {
     });
 
     await expect(
-      Prism.text().using('anthropic', 'claude-sonnet-4-5', { transport }).withPrompt('Hi').asText(),
+      Prism.text().using('anthropic', 'claude-sonnet-5-5', { transport }).withPrompt('Hi').asText(),
     ).rejects.toThrow(PrismError);
   });
 
@@ -231,7 +231,7 @@ describe('Anthropic provider', () => {
     });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -248,7 +248,7 @@ describe('Anthropic provider', () => {
     const { transport } = recordingTransport({ body: { ...OK_BODY, stop_reason: 'something_new' } });
 
     const response = await Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { transport })
+      .using('anthropic', 'claude-sonnet-5-5', { transport })
       .withPrompt('Hi')
       .asText();
 
@@ -259,7 +259,7 @@ describe('Anthropic provider', () => {
     async function bodyFor(configure: (pending: ReturnType<typeof Prism.text>) => ReturnType<typeof Prism.text>) {
       const { transport, calls } = recordingTransport();
 
-      await configure(Prism.text().using('anthropic', 'claude-sonnet-4-6', { transport }).withPrompt('Hi')).asText();
+      await configure(Prism.text().using('anthropic', 'claude-sonnet-5-5', { transport }).withPrompt('Hi')).asText();
 
       return bodyOf(calls[0]);
     }
@@ -342,7 +342,7 @@ describe('Anthropic provider', () => {
       });
       const pending = () =>
         Prism.text()
-          .using('anthropic', 'claude-sonnet-4-6', { transport })
+          .using('anthropic', 'claude-sonnet-5-5', { transport })
           .withProviderOptions({ thinking: { type: 'adaptive' } });
 
       const first = await pending().withPrompt('Weather?').asText();
@@ -373,7 +373,7 @@ describe('Anthropic provider', () => {
       const { transport, calls } = recordingTransport();
 
       await Prism.text()
-        .using('anthropic', 'claude-sonnet-4-6', { transport })
+        .using('anthropic', 'claude-sonnet-5-5', { transport })
         .withMessages([
           new UserMessage('Weather?'),
           new AssistantMessage('', [new ToolCall('toolu_1', 'weather', {})], { thinking: '', thinking_signature: 'sig-1' }),
@@ -390,7 +390,7 @@ describe('Anthropic provider', () => {
       const { transport, calls } = recordingTransport();
 
       await Prism.text()
-        .using('anthropic', 'claude-sonnet-4-6', { transport })
+        .using('anthropic', 'claude-sonnet-5-5', { transport })
         .withMessages([new UserMessage('Hi'), new AssistantMessage('Hello.', [], { thinking: 'hmm' }), new UserMessage('Again')])
         .asText();
 

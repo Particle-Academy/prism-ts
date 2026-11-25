@@ -13,7 +13,7 @@ const fixtures = {
     usage: { input_tokens: 12, output_tokens: 7 },
   },
   anthropic: {
-    id: 'structured', model: 'claude-sonnet-4-5', stop_reason: 'end_turn',
+    id: 'structured', model: 'claude-sonnet-5-5', stop_reason: 'end_turn',
     content: [{ type: 'text', text: json }], usage: { input_tokens: 12, output_tokens: 7 },
   },
   mistral: {
@@ -59,7 +59,7 @@ describe('structured conversation', () => {
 
   it.each([undefined, false])('Anthropic native mode (%s) sends schema and effort without changing messages', async (mode) => {
     const { calls, transport } = recorder(fixtures.anthropic);
-    const request = Prism.structured().using('anthropic', 'claude-sonnet-4-5', { apiKey: 'fixture-only', transport })
+    const request = Prism.structured().using('anthropic', 'claude-sonnet-5-5', { apiKey: 'fixture-only', transport })
       .withSchema(schema).withPrompt('Return JSON.').withProviderOptions({ effort: 'high', ...(mode === undefined ? {} : { use_tool_calling: mode }) })
       .toRequest();
     const before = request.messages().map(message => message.toObject());
@@ -79,7 +79,7 @@ describe('structured conversation', () => {
 
   it.each([true, 1, 'enabled', { mode: 'tool' }])('refuses structured-tool mode %j before any HTTP', async (mode) => {
     const { calls, transport } = recorder(fixtures.anthropic);
-    await expect(Prism.structured().using('anthropic', 'claude-sonnet-4-5', { apiKey: 'fixture-only', transport })
+    await expect(Prism.structured().using('anthropic', 'claude-sonnet-5-5', { apiKey: 'fixture-only', transport })
       .withSchema(schema).withPrompt('Return JSON.').withProviderOptions({ use_tool_calling: mode })
       .asStructured()).rejects.toMatchObject({ code: 'unsupported_provider_action' });
     expect(calls).toHaveLength(0);
@@ -87,7 +87,7 @@ describe('structured conversation', () => {
 
   it('keeps the ordinary Anthropic text path unchanged', async () => {
     const { calls, transport } = recorder(fixtures.anthropic);
-    const response = await Prism.text().using('anthropic', 'claude-sonnet-4-5', { apiKey: 'fixture-only', transport })
+    const response = await Prism.text().using('anthropic', 'claude-sonnet-5-5', { apiKey: 'fixture-only', transport })
       .withPrompt('Return JSON.').asText();
     expect(response.text).toBe(json);
     expect(JSON.parse(calls[0]?.body ?? '{}')).not.toHaveProperty('output_config');
@@ -96,7 +96,7 @@ describe('structured conversation', () => {
 
   it('refuses citations with native schema mode before HTTP', async () => {
     const { calls, transport } = recorder(fixtures.anthropic);
-    await expect(Prism.structured().using('anthropic', 'claude-sonnet-4-5', { apiKey: 'fixture-only', transport })
+    await expect(Prism.structured().using('anthropic', 'claude-sonnet-5-5', { apiKey: 'fixture-only', transport })
       .withSchema(schema).withPrompt('Return JSON.').withProviderOptions({ citations: true })
       .asStructured()).rejects.toMatchObject({ code: 'unsupported_provider_action' });
     expect(calls).toHaveLength(0);
