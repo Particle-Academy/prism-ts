@@ -58,8 +58,11 @@ export const fetchTransport: HttpTransport = async (request: HttpRequest): Promi
   });
 };
 
-/** Redirect hops a provider call may take, all on the origin it started on. */
-const MAX_PROVIDER_REDIRECTS = 10;
+/**
+ * Redirect hops a provider call may take, all on the origin it started on.
+ * Five, as in the reference: its HTTP client follows five and refuses the sixth.
+ */
+const MAX_PROVIDER_REDIRECTS = 5;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -77,8 +80,13 @@ const BODY_HEADERS = ['content-type', 'content-length', 'content-encoding', 'con
  * second request is made. Same-origin hops keep the method, body and headers,
  * except that a 303, or a 301/302 answering a POST, becomes a GET without a body,
  * as `fetch` itself would do.
+ *
+ * A url that `fetch` cannot send at all, one that does not parse or that
+ * carries userinfo, is refused here with a code. `fetch` would throw a bare
+ * TypeError whose message repeats the url, userinfo included.
  */
 async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
+  assertSendable(url);
   const origin = originOf(url);
   let current = url;
   let method = (init.method ?? 'GET').toUpperCase();
@@ -123,6 +131,10 @@ async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSign
       throw new PrismUrlRefused('redirect_refused', `The provider answered ${response.status} with a redirect to a different origin; it was not followed.`);
     }
 
+    if (next.username !== '' || next.password !== '') {
+      throw new PrismUrlRefused('redirect_refused', `The provider answered ${response.status} with a Location that carries credentials; it was not followed.`);
+    }
+
     if (hop >= MAX_PROVIDER_REDIRECTS) {
       throw new PrismUrlRefused('too_many_redirects', `The provider redirected more than ${MAX_PROVIDER_REDIRECTS} times.`);
     }
@@ -141,6 +153,24 @@ async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSign
     }
 
     current = next.href;
+  }
+}
+
+/**
+ * Refuses a url `fetch` cannot send, without repeating it: `scheme_not_allowed`,
+ * the code the reference's per-call guard gives a url it cannot use.
+ */
+function assertSendable(url: string): void {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new PrismUrlRefused('scheme_not_allowed', 'The provider url is not an absolute url, so the request was not sent.');
+  }
+
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new PrismUrlRefused('scheme_not_allowed', 'The provider url carries userinfo (a user name or password before the host), which cannot be sent; pass credentials in the provider config instead.');
   }
 }
 
