@@ -11,6 +11,7 @@ BREAKING CHANGE: A per-call provider `url` (`using(provider, model, { url })`) t
 - The OpenAI provider supports `apiFormat: 'chat_completions'` for text, structured and stream, posting the reference's request bodies to `<url>/chat/completions`. Tool-call replies are refused with `tool_loop_not_supported` without running the tool, unusable tool arguments follow the existing rules, and a document, audio or video part is refused with `unsupported_media` (G-321 D).
 - `OpenAIConfig.ignoreEnvironment` builds an OpenAI provider from the passed values only.
 - An unknown OpenAI `apiFormat` is now refused on `stream` as well as on `text` and `structured`; streaming used to ignore the format.
+- `ToolCall.toObject()` no longer keeps the text of unusable arguments. Such a call is stored as `"arguments": "]"` with `"arguments_malformed": true`, as the PHP reference stores it, and that record (or any record marked `arguments_malformed`) is read back by `fromObject()` as a call with unusable arguments. Records of usable calls are unchanged. This applies to every record holding a call: messages, steps and responses.
 
 ## 0.11.0 — 2026-11-23
 
