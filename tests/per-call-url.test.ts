@@ -428,3 +428,15 @@ describe('an IPv6 per-call literal with a dotted IPv4 tail', () => {
     expectRefused(await ask('openai', { url }), 'private_address_refused', url);
   });
 });
+
+describe('an ISATAP per-call literal behind a 6to4 prefix', () => {
+  it.each(['http://[2002:808:808::5efe:7f00:1]/v1', 'http://[2002:808:808::5efe:169.254.169.254]/latest', 'http://[2606:4700::127.0.0.1.]/v1'])(
+    'refuses %s before any request',
+    async (url) => {
+      const error = await ask('openai', { url });
+      expect(error).toBeInstanceOf(PrismError);
+      expect((error as PrismError).code).toBe('private_address_refused');
+      expect(fake.sent).toHaveLength(0);
+    },
+  );
+});

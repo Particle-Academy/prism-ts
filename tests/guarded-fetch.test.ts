@@ -195,6 +195,7 @@ describe('the opt-in guarded media fetch', () => {
     '64:ff9b:1::a9fe:a9fe', '2002:a9fe:a9fe::', '2002:a00:5::1',
     '2001:0:4136:e378:8000:63bf:3fff:fdd2', '2001:db8::1', '100::1', 'fec0::1', 'ff02::1',
     '::ffff:7f00:1', '::7f00:1',
+    '2002:808:808::5efe:7f00:1', '2002:808:808::5efe:169.254.169.254', '2002:808:808::200:5efe:a9fe:a9fe', '2001:4860::5efe:10.0.0.5', '2606:4700::5efe:127.0.0.1',
   ];
 
   it.each(nonPublic)('refuses the literal %s', async (address) => {
@@ -216,7 +217,7 @@ describe('the opt-in guarded media fetch', () => {
 
   // The controls. An IPv6-only host behind DNS64 is TOLD 64:ff9b:: addresses for
   // public sites, so refusing NAT64 outright would break every fetch there.
-  it.each(['8.8.8.8', '64:ff9b::808:808', '2002:808:808::1', '2606:4700:4700::1111'])(
+  it.each(['8.8.8.8', '64:ff9b::808:808', '2002:808:808::1', '2606:4700:4700::1111', '2606:4700::8.8.8.8', '2606:4700::5efe:8.8.8.8', '2002:808:808::5efe:808:808'])(
     'still fetches through the public answer %s', async (address) => {
       const fetch = vi.fn(async () => new Response('image', { headers: { 'content-type': 'image/png' } }));
       vi.stubGlobal('fetch', fetch);

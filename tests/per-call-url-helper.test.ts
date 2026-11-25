@@ -122,3 +122,16 @@ describe('assertPerCallUrl, IPv6 literals with a dotted IPv4 tail', () => {
     },
   );
 });
+
+describe('assertPerCallUrl, ISATAP behind a 6to4 prefix and a trailing dot in brackets', () => {
+  it.each([
+    'http://[2002:808:808::5efe:7f00:1]/v1', 'http://[2002:808:808::5efe:169.254.169.254]/v1',
+    'http://[2002:808:808::200:5efe:a9fe:a9fe]/v1', 'http://[2606:4700::127.0.0.1.]/v1', 'http://[2606:4700::1.]/v1',
+  ])('refuses %s', (url) => {
+    expect(() => assertPerCallUrl(url)).toThrowError(expect.objectContaining({ code: 'private_address_refused' }) as Error);
+  });
+
+  it('allows ISATAP of a public IPv4 behind a 6to4 prefix', () => {
+    expect(() => assertPerCallUrl('http://[2002:808:808::5efe:808:808]/v1')).not.toThrow();
+  });
+});
