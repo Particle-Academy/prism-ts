@@ -6,7 +6,7 @@ const TOOL_CALL_BODY = {
   id: 'msg_1',
   type: 'message',
   role: 'assistant',
-  model: 'claude-sonnet-4-5',
+  model: 'claude-sonnet-5-5',
   content: [{ type: 'tool_use', id: 'toolu_1', name: 'delete_file', input: { path: 'a.txt' } }],
   stop_reason: 'tool_use',
   usage: { input_tokens: 10, output_tokens: 2 },
@@ -29,7 +29,7 @@ describe('tool calls in core', () => {
     } as HttpResponse);
 
     const request = Prism.text()
-      .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', url: 'https://api.example.test/v1', transport })
+      .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', url: 'https://api.example.test/v1', transport })
       .withTools([new Tool().as('delete_file').for('Delete a file').withStringParameter('path', 'Path').using(() => { ran += 1; return 'deleted'; })])
       .withPrompt('Delete a.txt.')
       .withMaxTokens(64)

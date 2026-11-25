@@ -182,7 +182,7 @@ describe('streaming', () => {
 });
 
 const ANTHROPIC_SSE = [
-  'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5","usage":{"input_tokens":7,"output_tokens":0}}}\n\n',
+  'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-5-5","usage":{"input_tokens":7,"output_tokens":0}}}\n\n',
   'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
   'data: {"type":"ping"}\n\n',
   'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}\n\n',
@@ -198,7 +198,7 @@ describe('Anthropic streaming', () => {
 
     const events = await collect(
       Prism.text()
-        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', streamTransport: transport })
         .withPrompt('Hi')
         .asStream(),
     );
@@ -232,7 +232,7 @@ describe('Anthropic streaming', () => {
     // A half-parsed JSON fragment is not something a consumer can use, so the
     // partials accumulate and only the finished call is emitted.
     const { transport } = streamTransport([
-      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5"}}\n\n',
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-5-5"}}\n\n',
       'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"lookup"}}\n\n',
       'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"q\\":"}}\n\n',
       'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"ada\\"}"}}\n\n',
@@ -242,7 +242,7 @@ describe('Anthropic streaming', () => {
 
     const events = await collect(
       Prism.text()
-        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', streamTransport: transport })
         .withPrompt('Hi')
         .asStream(),
     );
@@ -266,13 +266,13 @@ describe('Anthropic streaming', () => {
     const [a, b] = await Promise.all([
       collect(
         Prism.text()
-          .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: first.transport })
+          .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', streamTransport: first.transport })
           .withPrompt('Hi')
           .asStream(),
       ),
       collect(
         Prism.text()
-          .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: second.transport })
+          .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', streamTransport: second.transport })
           .withPrompt('Hi')
           .asStream(),
       ),
@@ -287,14 +287,14 @@ describe('Anthropic streaming', () => {
 
   it('reads max_tokens as a length finish', async () => {
     const { transport } = streamTransport([
-      'data: {"type":"message_start","message":{"id":"m","model":"claude-sonnet-4-5"}}\n\n',
+      'data: {"type":"message_start","message":{"id":"m","model":"claude-sonnet-5-5"}}\n\n',
       'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n',
       'data: {"type":"message_stop"}\n\n',
     ]);
 
     const events = await collect(
       Prism.text()
-        .using('anthropic', 'claude-sonnet-4-5', { apiKey: 'sk-test', streamTransport: transport })
+        .using('anthropic', 'claude-sonnet-5-5', { apiKey: 'sk-test', streamTransport: transport })
         .withPrompt('Hi')
         .asStream(),
     );

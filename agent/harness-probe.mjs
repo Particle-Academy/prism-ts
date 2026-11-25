@@ -112,7 +112,7 @@ export async function probeHarness() {
     const session = app.for(participant).session('probe');
     await session.usingMode('guarded');
     await session.usingProvider('anthropic');
-    await session.usingModel('claude-sonnet-4-5');
+    await session.usingModel('claude-sonnet-5-5');
 
     // The same address PHP builds. This is the claim that lets all three
     // languages share one store, so it is asserted rather than described.

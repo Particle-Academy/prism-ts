@@ -180,8 +180,8 @@ function routes(): Route[] {
   return [
     {
       label: 'anthropic',
-      text: () => Prism.text().using('anthropic', 'claude-sonnet-4-5', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asText(),
-      stream: () => drain(Prism.text().using('anthropic', 'claude-sonnet-4-5', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asStream()),
+      text: () => Prism.text().using('anthropic', 'claude-sonnet-5-5', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asText(),
+      stream: () => drain(Prism.text().using('anthropic', 'claude-sonnet-5-5', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asStream()),
     },
     {
       label: 'mistral',
