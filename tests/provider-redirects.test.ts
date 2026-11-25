@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { IncomingHttpHeaders, Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { configureProviders, Prism, PrismUrlRefused } from '../src/index.js';
+import { configureProviders, Prism, PrismError, PrismUrlRefused } from '../src/index.js';
 import { fetchBinaryTransport, fetchStreamTransport, fetchTransport } from '../src/http/transport.js';
 import type { HttpRequest } from '../src/http/transport.js';
 
@@ -297,6 +297,35 @@ describe('a provider redirect that stays on the same origin', () => {
     expect(origin.received.map((request) => request.url)).toEqual(['/v1/responses', '/v2/responses']);
   });
 
+  it('stops after five hops for text, as the reference does', async () => {
+    origin.plan = () => ({ status: 307, headers: { location: '/v1/loop' } });
+    const error = await outcome(() => Prism.text().using('openai', 'gpt-4o', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asText());
+
+    expect(error).toBeInstanceOf(PrismUrlRefused);
+    expect((error as PrismUrlRefused).code).toBe('too_many_redirects');
+    expect(origin.received).toHaveLength(6);
+  });
+
+  it('refuses a same-origin Location carrying userinfo for text', async () => {
+    origin.plan = (request) => ({ status: 307, headers: { location: `http://fixture-user:fixture-pass@127.0.0.1:${origin.port}${request.url}` } });
+    const error = await outcome(() => Prism.text().using('openai', 'gpt-4o', { apiKey: KEY, url: `${origin.base}/v1` }).withPrompt('Hi').asText());
+
+    expect(error).toBeInstanceOf(PrismUrlRefused);
+    expect((error as PrismUrlRefused).code).toBe('redirect_refused');
+    expect(origin.received).toHaveLength(1);
+    expect(String((error as Error).message)).not.toContain('fixture-pass');
+  });
+
+  it('refuses a per-call url carrying userinfo with a coded error that does not echo it', async () => {
+    const error = await outcome(() => Prism.text().using('openai', 'gpt-4o', { apiKey: KEY, url: `http://fixture-user:fixture-pass@127.0.0.1:${origin.port}/v1` }).withPrompt('Hi').asText());
+
+    expect(error).toBeInstanceOf(PrismError);
+    expect((error as PrismError).code).toBe('scheme_not_allowed');
+    expect(origin.received).toHaveLength(0);
+    expect(String((error as Error).message)).not.toContain('fixture-user');
+    expect(String((error as Error).message)).not.toContain('fixture-pass');
+  });
+
   it('is followed for an openai batch retrieve GET', async () => {
     const batch = JSON.stringify({ id: 'batch_1', object: 'batch', status: 'completed', created_at: 1, request_counts: { total: 0, completed: 0, failed: 0 } });
     origin.plan = (request) => request.url.startsWith('/v2/')
@@ -351,7 +380,43 @@ describe('the default transports', () => {
 
       expect(error).toBeInstanceOf(PrismUrlRefused);
       expect((error as PrismUrlRefused).code).toBe('too_many_redirects');
-      expect(origin.received.length).toBeLessThanOrEqual(11);
+      // The reference follows five redirects and refuses the sixth: one
+      // request, five followed hops, and nothing after that.
+      expect(origin.received).toHaveLength(6);
+    });
+
+    it('follows a chain of exactly five same-origin redirects', async () => {
+      origin.plan = () => origin.received.length <= 5
+        ? { status: 307, headers: { location: `/v1/hop-${origin.received.length}` } }
+        : { status: 200, headers: { 'content-type': 'application/json' }, body: '{}' };
+      const response = await send(post(`${origin.base}/v1/messages`));
+
+      expect(response.status).toBe(200);
+      expect(origin.received).toHaveLength(6);
+    });
+
+    it.each([
+      ['a user and password', 'fixture-user:fixture-pass@'],
+      ['a user only', 'fixture-user@'],
+    ])('refuses a same-origin Location carrying %s, without echoing it', async (_label, userinfo) => {
+      origin.plan = (request) => ({ status: 307, headers: { location: `http://${userinfo}127.0.0.1:${origin.port}${request.url}` } });
+      const error = await outcome(() => send(post(`${origin.base}/v1/messages`)));
+
+      expect(error).toBeInstanceOf(PrismUrlRefused);
+      expect((error as PrismUrlRefused).code).toBe('redirect_refused');
+      expect(origin.received).toHaveLength(1);
+      expect(String((error as Error).message)).not.toContain('fixture-user');
+      expect(String((error as Error).message)).not.toContain('fixture-pass');
+    });
+
+    it('refuses a url carrying userinfo with a coded error that does not echo it', async () => {
+      const error = await outcome(() => send(post('https://fixture-user:fixture-pass@gateway.example/v1/messages')));
+
+      expect(error).toBeInstanceOf(PrismError);
+      expect((error as PrismError).code).toBe('scheme_not_allowed');
+      expect(String((error as Error).message)).not.toContain('fixture-user');
+      expect(String((error as Error).message)).not.toContain('fixture-pass');
+      expect(String((error as Error).message)).not.toContain('gateway.example');
     });
 
     it.each([303, 301, 302])('turns a POST answered with %i into a GET without a body', async (status) => {
