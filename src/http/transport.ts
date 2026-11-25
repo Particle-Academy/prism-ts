@@ -81,12 +81,12 @@ const BODY_HEADERS = ['content-type', 'content-length', 'content-encoding', 'con
  * except that a 303, or a 301/302 answering a POST, becomes a GET without a body,
  * as `fetch` itself would do.
  *
- * A url that `fetch` cannot send at all, one that does not parse or that
- * carries userinfo, is refused here with a code. `fetch` would throw a bare
- * TypeError whose message repeats the url, userinfo included.
+ * The url is handed to `fetch` as given. When `fetch` refuses it outright,
+ * because it does not parse or carries userinfo, the bare TypeError it throws
+ * repeats the url, userinfo included; that refusal is replaced with a coded
+ * one that does not.
  */
 async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
-  assertSendable(url);
   const origin = originOf(url);
   let current = url;
   let method = (init.method ?? 'GET').toUpperCase();
@@ -108,7 +108,7 @@ async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSign
       hopInit.body = body;
     }
 
-    const response = await abortable(fetch(current, hopInit), signal);
+    const response = await abortable(fetchOrRefuse(current, hopInit), signal);
 
     const location = response.headers.get('location');
 
@@ -157,21 +157,42 @@ async function fetchSameOrigin(url: string, init: RequestInit, signal: AbortSign
 }
 
 /**
- * Refuses a url `fetch` cannot send, without repeating it: `scheme_not_allowed`,
- * the code the reference's per-call guard gives a url it cannot use.
+ * `fetch`, with its refusal of a url it cannot send replaced by
+ * `scheme_not_allowed` (the code the reference's per-call guard gives a url it
+ * cannot use). The original error is dropped, not kept as a cause, because its
+ * message names the url. Any other failure is rethrown untouched.
  */
-function assertSendable(url: string): void {
+async function fetchOrRefuse(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      const refusal = unsendable(url);
+
+      if (refusal !== null) {
+        throw new PrismUrlRefused('scheme_not_allowed', refusal);
+      }
+    }
+
+    throw error;
+  }
+}
+
+/** Why `fetch` cannot send this url, or null when the url itself is not the reason. */
+function unsendable(url: string): string | null {
   let parsed: URL;
 
   try {
     parsed = new URL(url);
   } catch {
-    throw new PrismUrlRefused('scheme_not_allowed', 'The provider url is not an absolute url, so the request was not sent.');
+    return 'The provider url is not an absolute url, so the request was not sent.';
   }
 
   if (parsed.username !== '' || parsed.password !== '') {
-    throw new PrismUrlRefused('scheme_not_allowed', 'The provider url carries userinfo (a user name or password before the host), which cannot be sent; pass credentials in the provider config instead.');
+    return 'The provider url carries userinfo (a user name or password before the host), which fetch cannot send; pass credentials in the provider config instead.';
   }
+
+  return null;
 }
 
 /** `scheme://host:port` with the default port made explicit, or null for anything but http(s). */

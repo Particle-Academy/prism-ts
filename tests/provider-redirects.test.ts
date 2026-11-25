@@ -409,14 +409,30 @@ describe('the default transports', () => {
       expect(String((error as Error).message)).not.toContain('fixture-pass');
     });
 
-    it('refuses a url carrying userinfo with a coded error that does not echo it', async () => {
-      const error = await outcome(() => send(post('https://fixture-user:fixture-pass@gateway.example/v1/messages')));
+    it('turns the platform refusal of a url carrying userinfo into a coded error that does not echo it', async () => {
+      const error = await outcome(() => send(post(`http://fixture-user:fixture-pass@127.0.0.1:${origin.port}/v1/messages`)));
 
       expect(error).toBeInstanceOf(PrismError);
       expect((error as PrismError).code).toBe('scheme_not_allowed');
-      expect(String((error as Error).message)).not.toContain('fixture-user');
-      expect(String((error as Error).message)).not.toContain('fixture-pass');
-      expect(String((error as Error).message)).not.toContain('gateway.example');
+      expect(origin.received).toHaveLength(0);
+      const text = `${String((error as Error).message)} ${String((error as Error).stack)}`;
+      expect(text).not.toContain('fixture-user');
+      expect(text).not.toContain('fixture-pass');
+      expect(text).not.toContain('127.0.0.1');
+    });
+
+    it('leaves a url carrying userinfo to the fetch it was given', async () => {
+      // The transport does not decide for the platform: a fetch that can send
+      // such a url (a wrapper, a proxy, another runtime) is handed it as is.
+      const seen: string[] = [];
+      vi.stubGlobal('fetch', (input: string | URL | Request) => {
+        seen.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        return Promise.resolve(new Response('{"error":{"message":"fixture"}}', { status: 500, headers: { 'content-type': 'application/json' } }));
+      });
+      const response = await send(post('https://fixture-user@gateway.example/v1/messages'));
+
+      expect(response.status).toBe(500);
+      expect(seen).toEqual(['https://fixture-user@gateway.example/v1/messages']);
     });
 
     it.each([303, 301, 302])('turns a POST answered with %i into a GET without a body', async (status) => {
