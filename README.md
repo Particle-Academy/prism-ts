@@ -226,6 +226,10 @@ call is ignored:
 | a `configureProviders()` entry | `allowPrivatePerCallUrl: true` in the entry |
 | `registerProvider(key, factory, options)` | `{ allowPrivatePerCallUrl: true }` |
 
+The opt-out allows private addresses only. With it on, a per-call url must still
+be an absolute `http` or `https` url, and its host is still refused if it holds a
+percent escape, a backslash, an invisible character or a non-ASCII character.
+
 ### OpenAI-compatible providers
 
 `configureProviders()` registers named OpenAI-compatible servers (vLLM, LM

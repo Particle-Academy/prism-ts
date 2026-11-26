@@ -122,8 +122,14 @@ function writtenHost(url: string): string | null {
  *   absolute http(s) url with a host; `private_address_refused` for a refused
  *   address or name, or a numeric host that cannot be read safely;
  *   `non_ascii_host_use_punycode` for a host that is not ASCII.
+ *
+ * `allowPrivate` is the provider config's opt-out (`allowPrivatePerCallUrl`).
+ * It skips only the address and local-name rules (steps 5 to 7). The scheme,
+ * the host as written, the invisible characters and the ASCII rule hold
+ * either way: the opt-out lets a call name a private address, never another
+ * scheme or a host a client would read differently from this check.
  */
-export function assertPerCallUrl(url: string): void {
+export function assertPerCallUrl(url: string, options: { allowPrivate?: boolean } = {}): void {
   // 1. A literal http:// or https:// prefix, case-insensitively.
   if (!/^https?:\/\//i.test(url)) throw schemeRefusal();
 
@@ -162,6 +168,7 @@ export function assertPerCallUrl(url: string): void {
   host = host.slice(0, end);
   if (host === '') throw schemeRefusal();
   if (!CANONICAL_HOST.test(host)) throw hostRefusal();
+  if (options.allowPrivate === true) return;
 
   // 5. An IPv6 literal.
   if (host.includes(':')) {
