@@ -227,8 +227,10 @@ call is ignored:
 | `registerProvider(key, factory, options)` | `{ allowPrivatePerCallUrl: true }` |
 
 The opt-out allows private addresses only. With it on, a per-call url must still
-be an absolute `http` or `https` url, and its host is still refused if it holds a
-percent escape, a backslash, an invisible character or a non-ASCII character.
+be an absolute `http` or `https` url, and its host may still hold only ASCII
+letters, digits, hyphens and dots, or an IPv6 address in brackets: a percent
+escape, a backslash, an underscore, an IPv6 zone id, an invisible character or a
+non-ASCII character is still refused.
 
 ### OpenAI-compatible providers
 

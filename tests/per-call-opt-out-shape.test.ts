@@ -59,6 +59,7 @@ const SHAPES: ReadonlyArray<readonly [string, string, string]> = [
   ['full-width digits', 'http://１０.0.0.5/v1', 'non_ascii_host_use_punycode'],
   ['non-ascii host', 'http://exämple.test/v1', 'non_ascii_host_use_punycode'],
   ['zone id', 'http://[fe80::1%25eth0]/v1', 'private_address_refused'],
+  ['underscore', 'http://my_service:8000/v1', 'private_address_refused'],
 ];
 
 function expectRefusedBeforeDispatch(error: unknown, code: string, url: string): void {
