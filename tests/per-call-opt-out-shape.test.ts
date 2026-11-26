@@ -95,9 +95,10 @@ describe('the per-call opt-out on a compatible entry', () => {
     const name = unique('compat');
     configureProviders({ [name]: { driver: 'openai-compatible', url: 'https://llm.example.test/v1', allowPrivatePerCallUrl: true } });
     const error = await ask(name, { url });
-    // An entry already refused a url that is not absolute http(s) with its
-    // own "not a valid provider url" TypeError, before the guard runs.
-    if (code === 'scheme_not_allowed' && error instanceof TypeError) {
+    // An entry already refused a url that is not absolute http(s), or that
+    // WHATWG URL cannot parse (a zone id), with its own "not a valid
+    // provider url" TypeError, before the guard runs.
+    if (error instanceof TypeError) {
       expect(error.message).toContain('not a valid provider url');
       expect(fake.sent).toHaveLength(0);
       return;

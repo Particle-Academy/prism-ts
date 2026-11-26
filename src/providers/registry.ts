@@ -189,7 +189,8 @@ function assertPerCallUrlAllowed(policy: PerCallUrlPolicy | undefined, url: unkn
 
   const configured = policy?.configuredUrl() ?? null;
   if (configured !== null && sameEndpoint(url, configured)) return;
-  if (policy?.allowPrivatePerCallUrl() === true) return;
 
-  assertPerCallUrl(url);
+  // The opt-out allows a private ADDRESS only. The scheme and host rules still
+  // apply: a factory or transport gets the url as given (G-382).
+  assertPerCallUrl(url, { allowPrivate: policy?.allowPrivatePerCallUrl() === true });
 }
