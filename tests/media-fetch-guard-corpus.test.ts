@@ -34,7 +34,7 @@ try {
 // refusal columns instead. PHP is the reference expectation, independent of
 // the TypeScript observations recorded in newer corpus packages.
 const all = loader.Corpus.open().suite('media-fetch-guard').cases('ts') as unknown as FetchCase[];
-// A `transport: 'default'` row (corpus 0.1.43, G-386) names `{port}` and runs
+// A `transport: 'default'` row (corpus 0.1.44, G-386) names `{port}` and runs
 // each language's REAL default transport against a loopback server, reading
 // what arrived off the server. prism-parity's tools/media-fetch-guard.mjs runs
 // those against this repository's build; a stubbed fetch here would record a
@@ -51,7 +51,7 @@ describe('the media-fetch-guard corpus', () => {
   it('retains every row and every control', () => {
     // 17 rows before corpus 0.1.29, 23 from it (G-366 adds a dotted-tail control).
     expect([17, 23]).toContain(cases.length);
-    // Wire rows follow the 23 transport-free rows; none before 0.1.43.
+    // Wire rows follow the 23 transport-free rows; none before 0.1.44.
     expect(wire.length === 0 || cases.length === 23).toBe(true);
     for (const row of wire) {
       expect(row.url).toContain('{port}');

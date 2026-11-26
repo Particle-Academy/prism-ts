@@ -109,12 +109,12 @@ describe('the corpus itself', () => {
     // lets the runtime land before the companion corpus without accepting a
     // missing new suite in 0.1.14 or an unknown future corpus version.
     //
-    // 0.1.30..0.1.43 were each reviewed against this runner: they add or change
+    // 0.1.30..0.1.44 were each reviewed against this runner: they add or change
     // security-corpus rows, value-object-roundtrip rows (0.1.30, rtp-0018..0020)
-    // and probe declarations (0.1.42), and no golden-based suite; 0.1.43 is the
+    // and probe declarations (0.1.43), and no golden-based suite; 0.1.44 is the
     // G-386 media-fetch-guard candidate (security-corpus rows only). The runnable
     // inventory below is the same as 0.1.29's, which is what this asserts.
-    const reviewedAfter029 = Array.from({ length: 14 }, (_, i) => `0.1.${30 + i}`);
+    const reviewedAfter029 = Array.from({ length: 15 }, (_, i) => `0.1.${30 + i}`);
     expect(['0.1.13', '0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21', '0.1.22', '0.1.23', '0.1.24', '0.1.25', '0.1.26', '0.1.27', '0.1.28', '0.1.29', ...reviewedAfter029]).toContain(corpus.version);
     const structuredSuites = ['0.1.14', '0.1.15', '0.1.16', '0.1.17', '0.1.18', '0.1.19', '0.1.20', '0.1.21', '0.1.22', '0.1.23', '0.1.24', '0.1.25', '0.1.26', '0.1.27', '0.1.28', '0.1.29', ...reviewedAfter029].includes(corpus.version)
       ? ['mistral-structured-response', 'structured-response']
