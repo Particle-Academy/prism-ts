@@ -11,6 +11,8 @@ interface FetchCase {
   redirects_to?: string;
   redirects_always?: boolean;
   refusal: { php: string | null; ts: string | null; py: string | null };
+  /** `default`: a wire row, run over the real default transport (see below). */
+  transport?: string;
   skipped: boolean;
 }
 
@@ -31,7 +33,16 @@ try {
 // The loader's public types describe golden cases. This security corpus has
 // refusal columns instead. PHP is the reference expectation, independent of
 // the TypeScript observations recorded in newer corpus packages.
-const cases = loader.Corpus.open().suite('media-fetch-guard').cases('ts') as unknown as FetchCase[];
+const all = loader.Corpus.open().suite('media-fetch-guard').cases('ts') as unknown as FetchCase[];
+// A `transport: 'default'` row (corpus 0.1.44, G-386) names `{port}` and runs
+// each language's REAL default transport against a loopback server, reading
+// what arrived off the server. prism-parity's tools/media-fetch-guard.mjs runs
+// those against this repository's build; a stubbed fetch here would record a
+// url the platform client cannot send as sent, which is the blind spot the wire
+// rows exist to close. Every other row runs here.
+const WIRE = 'default';
+const cases = all.filter(row => row.transport !== WIRE);
+const wire = all.filter(row => row.transport === WIRE);
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 afterEach(() => vi.unstubAllGlobals());
@@ -40,9 +51,15 @@ describe('the media-fetch-guard corpus', () => {
   it('retains every row and every control', () => {
     // 17 rows before corpus 0.1.29, 23 from it (G-366 adds a dotted-tail control).
     expect([17, 23]).toContain(cases.length);
-    expect(cases.map(row => row.id)).toEqual(
-      Array.from({ length: cases.length }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
+    // Wire rows follow the 23 transport-free rows; none before 0.1.44.
+    expect(wire.length === 0 || cases.length === 23).toBe(true);
+    for (const row of wire) {
+      expect(row.url).toContain('{port}');
+    }
+    expect(all.map(row => row.id)).toEqual(
+      Array.from({ length: all.length }, (_, i) => `url-${String(i + 1).padStart(4, '0')}`),
     );
+    expect(all.filter(row => row.transport !== undefined && row.transport !== WIRE)).toEqual([]);
     expect(cases.every(row => row.skipped === false)).toBe(true);
     expect(cases.filter(row => row.refusal.php === null).map(row => row.id))
       .toEqual(cases.length === 17 ? ['url-0001', 'url-0009', 'url-0017'] : ['url-0001', 'url-0009', 'url-0017', 'url-0023']);
