@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.12.1 — 2026-11-27
+
+- An assistant message's stored provider content (Anthropic `content_blocks`, OpenAI Responses `output_items`) no longer drops the message's tool calls that are missing from it. Each such call is now sent after the replayed content, so every tool result that follows has its tool call. On Anthropic the order stays thinking, then text, then tool_use.
+
 ## 0.12.0 — 2026-11-26
 
 BREAKING CHANGE: A per-call provider `url` (`using(provider, model, { url })`) that points at a loopback, private, link-local or metadata address is now refused with `PrismUrlRefused` (`private_address_refused`) before the provider is built, so before any request; one that is not an absolute http or https url is refused with `scheme_not_allowed`. Every IPv4 spelling a resolver accepts (decimal, octal, hex, shortened), IPv4-mapped and NAT64/6to4 IPv6, and `localhost` / metadata hostnames are covered; the message never names the address. This applies to built-in, `configureProviders()` and `registerProvider()` providers. Configured urls (`OPENAI_URL`, `ANTHROPIC_URL`, `MISTRAL_URL`, the defaults, a compatible entry's `url`) may still point anywhere, and a per-call url naming the configured endpoint is not checked. Opt out in configuration only: `OPENAI_ALLOW_PRIVATE_PER_CALL_URL` / `ANTHROPIC_ALLOW_PRIVATE_PER_CALL_URL` / `MISTRAL_ALLOW_PRIVATE_PER_CALL_URL` set to `true`, a compatible entry's `allowPrivatePerCallUrl: true`, or `registerProvider(key, factory, { allowPrivatePerCallUrl: true })`. An `allowPrivatePerCallUrl` passed with a call is ignored. The check needs no DNS, so a hostname resolving to a private address is not caught.
