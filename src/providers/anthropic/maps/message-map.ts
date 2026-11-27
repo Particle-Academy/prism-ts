@@ -84,9 +84,12 @@ function mapAssistantMessage(message: AssistantMessage, items: JsonObject[]): vo
     // already a replayed tool_use goes after them, so the order stays
     // thinking, then text, then tool_use, and the next tool_result has its
     // tool_use (G-416).
-    const replayed = new Set(content.filter(isJsonObject).filter((block) => block.type === 'tool_use').map((block) => block.id));
+    // Counted by id occurrence: two calls sharing an id need two blocks.
+    const held = new Map<JsonValue | undefined, number>();
+    for (const block of content.filter(isJsonObject).filter((entry) => entry.type === 'tool_use')) held.set(block.id, (held.get(block.id) ?? 0) + 1);
     for (const toolCall of message.toolCalls) {
-      if (replayed.has(toolCall.id)) continue;
+      const count = held.get(toolCall.id) ?? 0;
+      if (count > 0) { held.set(toolCall.id, count - 1); continue; }
       content.push({ type: 'tool_use', id: toolCall.id, name: toolCall.name, input: toolCall.parsedArguments() });
     }
     if (content.length > 0) items.push({ role: 'assistant', content });
