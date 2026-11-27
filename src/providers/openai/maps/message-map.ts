@@ -67,11 +67,29 @@ function mapAssistantMessage(message: AssistantMessage, items: JsonValue[]): voi
   const replay = message.additionalContent.output_items;
   if (Array.isArray(replay) && replay.length > 0) {
     // The same replay every other path sends for unusable arguments.
-    items.push(...replayableItems(replay).map((item) => (
+    const replayed = replayableItems(replay).map((item) => (
       item.type === 'function_call'
         ? { ...item, arguments: new ToolCallValue('', '', ToolCallValue.storableArguments(item.arguments)).replayableArgumentsText() }
         : item
-    )));
+    ));
+    items.push(...replayed);
+    // The items are replayed as stored, but they need not hold every call of
+    // the turn. Each call not among them, counted by call id occurrence, goes
+    // after them, so every function_call_output that follows has its
+    // function_call (G-416).
+    const held = new Map<JsonValue | undefined, number>();
+    for (const item of replayed) if (item.type === 'function_call') held.set(item.call_id, (held.get(item.call_id) ?? 0) + 1);
+    for (const toolCall of message.toolCalls) {
+      const count = held.get(toolCall.resultId) ?? 0;
+      if (count > 0) { held.set(toolCall.resultId, count - 1); continue; }
+      items.push({
+        id: toolCall.id,
+        call_id: toolCall.resultId,
+        type: 'function_call',
+        name: toolCall.name,
+        arguments: canonicalJson(toolCall.parsedArguments()),
+      });
+    }
     return;
   }
   if (message.toolCalls.length > 0) {

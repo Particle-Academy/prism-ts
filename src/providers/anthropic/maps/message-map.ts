@@ -77,7 +77,21 @@ export function mapSystem(systemPrompts: readonly SystemMessage[]): string | nul
 function mapAssistantMessage(message: AssistantMessage, items: JsonObject[]): void {
   const replay = message.additionalContent.content_blocks;
   if (Array.isArray(replay)) {
-    const content = replayContentBlocks(replay);
+    const content: JsonValue[] = replayContentBlocks(replay);
+    // The blocks are replayed as stored, but they need not hold the turn's
+    // tool calls: parse-response stores them without tool_use, and blocks
+    // ahead of a fallback block are not replayed. Every call whose id is not
+    // already a replayed tool_use goes after them, so the order stays
+    // thinking, then text, then tool_use, and the next tool_result has its
+    // tool_use (G-416).
+    // Counted by id occurrence: two calls sharing an id need two blocks.
+    const held = new Map<JsonValue | undefined, number>();
+    for (const block of content.filter(isJsonObject).filter((entry) => entry.type === 'tool_use')) held.set(block.id, (held.get(block.id) ?? 0) + 1);
+    for (const toolCall of message.toolCalls) {
+      const count = held.get(toolCall.id) ?? 0;
+      if (count > 0) { held.set(toolCall.id, count - 1); continue; }
+      content.push({ type: 'tool_use', id: toolCall.id, name: toolCall.name, input: toolCall.parsedArguments() });
+    }
     if (content.length > 0) items.push({ role: 'assistant', content });
     return;
   }
